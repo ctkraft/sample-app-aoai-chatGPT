@@ -92,12 +92,19 @@ If you've deployed the app previously, first run this command to update the apps
 
 `az webapp config appsettings set -g <resource-group-name> -n <existing-app-name> --settings WEBSITE_WEBDEPLOY_USE_SCM=false`
 
+---FEMA GPT
+az webapp config appsettings set -g rg-fema-budget -n fema-gpt --settings WEBSITE_WEBDEPLOY_USE_SCM=false
+
 Check the runtime stack for your app by viewing the app service resource in the Azure Portal. If it shows "Python - 3.10", use `PYTHON:3.10` in the runtime argument below. If it shows "Python - 3.11", use `PYTHON:3.11` in the runtime argument below. 
 
 Check the SKU in the same way. Use the abbreviated SKU name in the argument below, e.g. for "Basic (B1)" the SKU is `B1`. 
 
 Then, use the `az webapp up` command to deploy your local code to the existing app:
 
+`az webapp up --runtime PYTHON:3.10 --sku B1 --name <existing-app-name> --resource-group <resource-group-name>`
+
+---FEMA GPT
+az webapp up --runtime PYTHON:3.10 --sku B1 --name fema-gpt --resource-group rg-fema-budget
 `az webapp up --runtime <runtime-stack> --sku <sku> --name <existing-app-name> --resource-group <resource-group-name>`
 
 Make sure that the app name and resource group match exactly for the app that was previously deployed.
