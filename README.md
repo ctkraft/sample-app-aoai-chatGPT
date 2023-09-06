@@ -76,9 +76,15 @@ If you've deployed the app previously from the AOAI studio, first run this comma
 
 `az webapp config appsettings set -g <resource-group-name> -n <existing-app-name> --settings WEBSITE_WEBDEPLOY_USE_SCM=false`
 
+---FEMA GPT
+az webapp config appsettings set -g rg-fema-budget -n fema-gpt --settings WEBSITE_WEBDEPLOY_USE_SCM=false
+
 Then, use the `az webapp up` command to deploy your local code to the existing app:
 
 `az webapp up --runtime PYTHON:3.10 --sku B1 --name <existing-app-name> --resource-group <resource-group-name>`
+
+---FEMA GPT
+az webapp up --runtime PYTHON:3.10 --sku B1 --name fema-gpt --resource-group rg-fema-budget
 
 Make sure that the app name and resource group match exactly for the app that was previously deployed.
 
