@@ -104,10 +104,6 @@ Then, use the `az webapp up` command to deploy your local code to the existing a
 
 `az webapp up --runtime PYTHON:3.10 --sku B1 --name <existing-app-name> --resource-group <resource-group-name>`
 
----FEMA GPT
-az webapp up --runtime PYTHON:3.10 --sku B1 --name fema-gpt --resource-group rg-fema-budget
-`az webapp up --runtime <runtime-stack> --sku <sku> --name <existing-app-name> --resource-group <resource-group-name>`
-
 Make sure that the app name and resource group match exactly for the app that was previously deployed.
 
 Deployment will take several minutes. When it completes, you should be able to navigate to your app at {app-name}.azurewebsites.net.
