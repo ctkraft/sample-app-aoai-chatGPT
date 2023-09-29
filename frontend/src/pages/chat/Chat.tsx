@@ -544,7 +544,7 @@ const Chat = () => {
                                     className={styles.chatIcon}
                                     aria-hidden="true"
                                 />
-                                <h1 className={styles.chatEmptyStateTitle}>FEMA GPT</h1>
+                                <h1 className={styles.chatEmptyStateTitle}>FEMA OCFO GPT</h1>
                                 <h2 className={styles.chatEmptyStateSubtitle}>Here to answer your budget questions...</h2>
                             </Stack>
                         ) : (
