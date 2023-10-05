@@ -5,8 +5,8 @@
         "subscription_id": "3ece6e23-70ff-4ac1-ba53-dc4d56948a6a",
         "resource_group": "fema-ocfo-gpt",
         "search_service_name": "cog-fema-ocfo-gpt",
-        "index_name": "indx-fema-ocfo-gpt-doc-intel",
-        "chunk_size": 1024,
+        "index_name": "indx-fema-ocfo-gpt-doc-intel-1",
+        "chunk_size": 1028,
         "token_overlap": 128,
         "semantic_config_name": "default",
         "language": "en"
