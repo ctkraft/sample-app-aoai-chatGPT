@@ -1,3 +1,5 @@
+trulens_eval_results.csv
+version_settings.json
 *.xlsx
 .venv
 frontend/node_modules
