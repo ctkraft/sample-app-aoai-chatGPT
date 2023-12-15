@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     AZURE_COSMOSDB_CONVERSATIONS_CONTAINER: str = ""
     AZURE_COSMOSDB_ACCOUNT_KEY: str = ""
     VERSION_ID: str = ""
+    PREP_CONFIG: dict = {}
 
     class Config:
         env_file = f"{os.path.dirname(os.path.abspath(__file__))}" + "/.env"
@@ -48,8 +49,9 @@ class Settings(BaseSettings):
 
     def get_version_configs(self):
         with open("version_settings.json") as f:
-            version_env = json.load(f)[self.VERSION_ID]["ENV"]
-        
+            version_settings = json.load(f)[self.VERSION_ID]
+        version_env = version_settings["ENV"]
+
         self.AZURE_SEARCH_SERVICE = version_env["AZURE_SEARCH_SERVICE"]
         self.AZURE_SEARCH_INDEX = version_env["AZURE_SEARCH_INDEX"]
         self.AZURE_SEARCH_KEY = version_env["AZURE_SEARCH_KEY"]
@@ -60,6 +62,7 @@ class Settings(BaseSettings):
         self.AZURE_OPENAI_TOP_P = version_env["AZURE_OPENAI_TOP_P"]
         self.AZURE_OPENAI_SYSTEM_MESSAGE = version_env["AZURE_OPENAI_SYSTEM_MESSAGE"]
         self.SHOULD_STREAM = True if version_env["AZURE_OPENAI_STREAM"].lower() == "true" else False
+        self.PREP_CONFIG = version_settings.get("PREP_CONFIG", None)
 
 settings = Settings()
 settings.get_version_configs()
