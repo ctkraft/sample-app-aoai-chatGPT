@@ -363,9 +363,10 @@ def create_index(config, credential, form_recognizer_client=None, embedding_mode
     add_embeddings = False
     if config.get("vector_config_name") and embedding_model_endpoint:
         add_embeddings = True
+
     result = chunk_directory(config["data_path"], num_tokens=config["chunk_size"], token_overlap=config.get("token_overlap",0),
-                             azure_credential=credential, form_recognizer_client=form_recognizer_client, use_layout=use_layout, njobs=njobs,
-                             add_embeddings=add_embeddings, embedding_endpoint=embedding_model_endpoint)
+                             form_recognizer_client=form_recognizer_client, use_layout=use_layout, njobs=njobs,
+                             add_embeddings=add_embeddings)
 
     if len(result.chunks) == 0:
         raise Exception("No chunks found. Please check the data path and chunk size.")
