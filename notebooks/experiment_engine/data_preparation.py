@@ -200,6 +200,7 @@ def create_or_update_search_index(
                 "name": "metadata",
                 "type": "Edm.String",
                 "searchable": True,
+                "analyzer": f"{language}.lucene" if language else None,
             },
         ],
         "suggesters": [],
