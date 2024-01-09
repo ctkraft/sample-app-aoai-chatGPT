@@ -41,7 +41,8 @@ FILE_FORMAT_DICT = {
         "htm": "html",
         "py": "python",
         "pdf": "pdf",
-        "json": "json"
+        "json": "json",
+        "docx": "docx"
     }
 
 RETRY_COUNT = 5
@@ -54,7 +55,6 @@ PDF_HEADERS = {
     "sectionHeading": "h2"
 }
 
-PDFReader = download_loader("PDFReader")
 
 @dataclass
 class Document(object):
@@ -71,6 +71,7 @@ class Document(object):
 
     content: str
     id: Optional[str] = None
+    doc_type: Optional[str] = None
     title: Optional[str] = None
     filepath: Optional[str] = None
     url: Optional[str] = None
@@ -89,6 +90,23 @@ def cleanup_content(content: str) -> str:
     output = re.sub(r"-{2,}", "--", output)
 
     return output.strip()
+
+
+class FileConverter:
+    def __init__(self, filetype):
+        converter_map = {
+            "pdf": "PDFReader",
+            "docx": "file/docx"
+        }
+        Reader = download_loader(converter_map[filetype])
+        self.loader = Reader()
+    
+    def extract_text(self, file_path):
+        documents = self.loader.load_data(file=file_path)
+        full_text = "".join([doc.text for doc in documents])
+
+        return full_text
+        
 
 class BaseParser(ABC):
     """A parser parses content to produce a document."""
@@ -127,25 +145,6 @@ class BaseParser(ABC):
             if os.path.isfile(file_path):
                 documents.append(self.parse_file(file_path))
         return documents
-
-class MarkdownParser(BaseParser):
-    """Parses Markdown content."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._html_parser = HTMLParser()
-
-    def parse(self, content: str, file_name: Optional[str] = None) -> Document:
-        """Parses the given content.
-        Args:
-            content (str): The content to parse.
-            file_name (str): The file name associated with the content.
-        Returns:
-            Document: The parsed document.
-        """
-        html_content = markdown.markdown(content, extensions=['fenced_code', 'toc', 'tables', 'sane_lists'])
-
-        return self._html_parser.parse(html_content, file_name)
 
 
 class HTMLParser(BaseParser):
@@ -246,37 +245,12 @@ class JSONParser(BaseParser):
         content_dump = json.dumps(content)
         return Document(content=content_dump, title=content["title"])
 
-class PythonParser(BaseParser):
-    def _get_topdocstring(self, text):
-        tree = ast.parse(text)
-        docstring = ast.get_docstring(tree)  # returns top docstring
-        return docstring
-
-    def parse(self, content: str, file_name: Optional[str] = None) -> Document:
-        """Parses the given content.
-        Args:
-            content (str): The content to parse.
-            file_name (str): The file name associated with the content.
-        Returns:
-            Document: The parsed document.
-        """
-        docstring = self._get_topdocstring(content)
-        if docstring:
-            title = f"{file_name}: {docstring}"
-        else:
-            title = file_name
-        return Document(content=content, title=title)
-
-    def __init__(self) -> None:
-        super().__init__()
 
 class ParserFactory:
     def __init__(self):
         self._parsers = {
             "html": HTMLParser(),
             "text": TextParser(),
-            "markdown": MarkdownParser(),
-            "python": PythonParser(),
             "json": JSONParser()
         }
 
@@ -395,107 +369,6 @@ def _get_file_format(file_name: str, extensions_to_process: List[str]) -> Option
         return None
     return FILE_FORMAT_DICT.get(file_extension, None)
 
-def table_to_html(table):
-    table_html = "<table>"
-    rows = [sorted([cell for cell in table.cells if cell.row_index == i], key=lambda cell: cell.column_index) for i in range(table.row_count)]
-    for row_cells in rows:
-        table_html += "<tr>"
-        for cell in row_cells:
-            tag = "th" if (cell.kind == "columnHeader" or cell.kind == "rowHeader") else "td"
-            cell_spans = ""
-            if cell.column_span > 1: cell_spans += f" colSpan={cell.column_span}"
-            if cell.row_span > 1: cell_spans += f" rowSpan={cell.row_span}"
-            table_html += f"<{tag}{cell_spans}>{html.escape(cell.content)}</{tag}>"
-        table_html +="</tr>"
-    table_html += "</table>"
-    return table_html
-
-
-def extract_pdf_content_regular(file_path):
-    docs = PDFReader().load_data(file=file_path)
-    full_text = "".join([doc.text for doc in docs])
-
-    return full_text
-
-
-def extract_pdf_content(file_path, form_recognizer_client, use_layout=False): 
-    offset = 0
-    page_map = []
-    model = "prebuilt-layout" if use_layout else "prebuilt-read"
-    with open(file_path, "rb") as f:
-        poller = form_recognizer_client.begin_analyze_document(model, document = f)
-    form_recognizer_results = poller.result()
-
-    # (if using layout) mark all the positions of headers
-    roles_start = {}
-    roles_end = {}
-    for paragraph in form_recognizer_results.paragraphs:
-        if paragraph.role!=None:
-            para_start = paragraph.spans[0].offset
-            para_end = paragraph.spans[0].offset + paragraph.spans[0].length
-            roles_start[para_start] = paragraph.role
-            roles_end[para_end] = paragraph.role
-
-    for page_num, page in enumerate(form_recognizer_results.pages):
-        tables_on_page = [table for table in form_recognizer_results.tables if table.bounding_regions[0].page_number == page_num + 1]
-
-        # (if using layout) mark all positions of the table spans in the page
-        page_offset = page.spans[0].offset
-        page_length = page.spans[0].length
-        table_chars = [-1]*page_length
-        for table_id, table in enumerate(tables_on_page):
-            for span in table.spans:
-                # replace all table spans with "table_id" in table_chars array
-                for i in range(span.length):
-                    idx = span.offset - page_offset + i
-                    if idx >=0 and idx < page_length:
-                        table_chars[idx] = table_id
-
-        # build page text by replacing charcters in table spans with table html and replace the characters corresponding to headers with html headers, if using layout
-        page_text = ""
-        added_tables = set()
-        for idx, table_id in enumerate(table_chars):
-            if table_id == -1:
-                position = page_offset + idx
-                if position in roles_start.keys():
-                    role = roles_start[position]
-                    if role in PDF_HEADERS:
-                        page_text += f"<{PDF_HEADERS[role]}>"
-                if position in roles_end.keys():
-                    role = roles_end[position]
-                    if role in PDF_HEADERS:
-                        page_text += f"</{PDF_HEADERS[role]}>"
-
-                page_text += form_recognizer_results.content[page_offset + idx]
-                
-            elif not table_id in added_tables:
-                page_text += table_to_html(tables_on_page[table_id])
-                added_tables.add(table_id)
-
-        page_text += " "
-        page_map.append((page_num, offset, page_text))
-        offset += len(page_text)
-
-    full_text = "".join([page_text for _, _, page_text in page_map])
-    return full_text
-
-def merge_chunks_serially(chunked_content_list: List[str], num_tokens: int) -> Generator[Tuple[str, int], None, None]:
-    # TODO: solve for token overlap
-    current_chunk = ""
-    total_size = 0
-    for chunked_content in chunked_content_list:
-        chunk_size = TOKEN_ESTIMATOR.estimate_tokens(chunked_content)
-        if total_size > 0:
-            new_size = total_size + chunk_size
-            if new_size > num_tokens:
-                yield current_chunk, total_size
-                current_chunk = ""
-                total_size = 0
-        total_size += chunk_size
-        current_chunk += chunked_content
-    if total_size > 0:
-        yield current_chunk, total_size
-
 
 def get_embedding(text):
     try:
@@ -522,13 +395,8 @@ def chunk_content_helper(
         content: str, 
         file_format: str, 
         file_name: Optional[str],
-        token_overlap: int,
-        num_tokens: int = 256,
         extractor_llm = None
 ) -> Generator[Tuple[str, int, Document], None, None]:
-    
-    if num_tokens is None:
-        num_tokens = 1000000000
 
     parser = parser_factory(file_format)
     doc = parser.parse(content, file_name=file_name)
@@ -537,7 +405,7 @@ def chunk_content_helper(
     # if the original doc after parsing is < num_tokens return as it is
     doc_content_size = TOKEN_ESTIMATOR.estimate_tokens(doc.content)
 
-    if file_format == "json" or doc_content_size < num_tokens:
+    if file_format == "json" or doc_content_size < settings.PREP_CONFIG["chunk_size"]:
         yield doc.content, doc_content_size, doc
     else:
         llama_splitter = LlamaIndexSplitter(
@@ -545,6 +413,7 @@ def chunk_content_helper(
             token_overlap=settings.PREP_CONFIG["token_overlap"], 
             extractor_llm=extractor_llm
         )
+        
         nodes = llama_splitter.get_nodes_from_doc(llama_doc, settings.PREP_CONFIG.get("split_mods", []))
         
         for node in nodes:
@@ -554,15 +423,11 @@ def chunk_content_helper(
 def chunk_content(
     content: str,
     file_name: Optional[str] = None,
+    file_format: Optional[str] = None,
+    doc_type: Optional[str] = None,
     url: Optional[str] = None,
     ignore_errors: bool = False,
-    num_tokens: int = 256,
     min_chunk_size: int = 10,
-    token_overlap: int = 0,
-    extensions_to_process = FILE_FORMAT_DICT.keys(),
-    cracked_pdf = False,
-    use_json_parsing = False,
-    use_layout = False,
     add_embeddings = False
 ) -> ChunkingResult:
     """Chunks the given content. If ignore_errors is true, returns None
@@ -580,17 +445,8 @@ def chunk_content(
     """
     ignore_errors = False
     try:
-        if use_json_parsing == True:
-            file_format = "json"
-        elif file_name is None or cracked_pdf == False or (cracked_pdf and not use_layout):
+        if file_format != "json": 
             file_format = "text"
-        elif cracked_pdf:
-            file_format = "html"
-        else:
-            file_format = _get_file_format(file_name, extensions_to_process)
-            if file_format is None:
-                raise Exception(
-                    f"{file_name} is not supported")
         
         extractor_llm = LlamaAOAI(
                 model=settings.AZURE_OPENAI_MODEL_NAME,
@@ -605,8 +461,6 @@ def chunk_content(
             content=content,
             file_name=file_name,
             file_format=file_format,
-            num_tokens=num_tokens,
-            token_overlap=token_overlap,
             extractor_llm=extractor_llm
         )
         
@@ -617,8 +471,12 @@ def chunk_content(
                 if add_embeddings:
                     for _ in range(RETRY_COUNT):
                         try:
-                            combined_content = f"{node.text}\n\nMETADATA: {node.metadata}"
-                            contentVector = get_embedding(combined_content)
+                            if settings.PREP_CONFIG.get("split_mods", []):
+                                content = json.dumps(node.metadata)
+                            else:
+                                content = f"{node.text}\n\nMETADATA: {node.metadata}"
+                            
+                            contentVector = get_embedding(content)
                             break
                         except:
                             sleep(30)
@@ -629,6 +487,7 @@ def chunk_content(
                 chunks.append(
                     Document(
                         id=node.id_,
+                        doc_type=doc_type,
                         content=node.text,
                         title=node.metadata["title"],
                         url=url,
@@ -661,7 +520,7 @@ def chunk_content(
 def chunk_file(
     file_path: str,
     ignore_errors: bool = True,
-    num_tokens=256,
+    num_tokens=1024,
     min_chunk_size=10,
     url = None,
     token_overlap: int = 0,
@@ -676,6 +535,7 @@ def chunk_file(
         List[Document]: List of chunked documents.
     """
     file_name = os.path.basename(file_path)
+    doc_type = os.path.basename(os.path.dirname(file_path))
     file_format = _get_file_format(file_name, extensions_to_process)
     if not file_format:
         if ignore_errors:
@@ -685,27 +545,25 @@ def chunk_file(
         else:
             raise UnsupportedFormatError(f"{file_name} is not supported")
 
-    cracked_pdf = False
-    use_json_parsing = False
-    if file_format == "pdf":
-        content = extract_pdf_content_regular(file_path)
-    elif file_format == "json":
+    if file_format == "json":
         with open(file_path) as f:
             content = json.load(f)
-        use_json_parsing = True
+    
+    else:
+        file_converter = FileConverter(file_format)
+        content = file_converter.extract_text(file_path)
+        
         
     return chunk_content(
         content=content,
         file_name=file_name,
+        file_format=file_format,
+        doc_type=doc_type,
+        url=url,
         ignore_errors=ignore_errors,
         num_tokens=num_tokens,
         min_chunk_size=min_chunk_size,
-        url=url,
         token_overlap=max(0, token_overlap),
-        extensions_to_process=extensions_to_process,
-        cracked_pdf=cracked_pdf,
-        use_json_parsing=use_json_parsing,
-        use_layout=use_layout,
         add_embeddings=add_embeddings
     )
 

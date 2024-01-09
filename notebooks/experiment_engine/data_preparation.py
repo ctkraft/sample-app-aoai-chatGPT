@@ -14,6 +14,7 @@ from azure.search.documents import SearchClient
 from tqdm import tqdm
 
 from data_utils import chunk_directory
+from config import settings
 
 SUPPORTED_LANGUAGE_CODES = {
     "ar": "Arabic",
@@ -173,6 +174,14 @@ def create_or_update_search_index(
                 "facetable": False,
                 "filterable": False,
                 "analyzer": f"{language}.lucene" if language else None,
+            },
+            {
+                "name": "doc_type",
+                "type": "Edm.String",
+                "searchable": False,
+                "sortable": False,
+                "facetable": True,
+                "filterable": True,
             },
             {
                 "name": "title",
@@ -395,7 +404,6 @@ def valid_range(n):
 
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, help="Path to config file containing settings for data preparation")
     parser.add_argument("--form-rec-resource", type=str, help="Name of your Form Recognizer resource to use for PDF cracking.")
     parser.add_argument("--form-rec-key", type=str, help="Key for your Form Recognizer resource to use for PDF cracking.")
     parser.add_argument("--form-rec-use-layout", default=False, action='store_true', help="Whether to use Layout model for PDF cracking, if False will use Read model.")
@@ -404,13 +412,13 @@ if __name__ == "__main__":
     parser.add_argument("--embedding-model-key", type=str, help="Key for the embedding model to use for vector search.")
     args = parser.parse_args()
 
-    with open(args.config) as f:
-        config = json.load(f)
+    index_config = settings.PREP_CONFIG
 
     credential = AzureCliCredential()
     form_recognizer_client = None
 
     print("Data preparation script started")
+    print("settings:", settings)
     if args.form_rec_resource and args.form_rec_key:
         os.environ["FORM_RECOGNIZER_ENDPOINT"] = f"https://{args.form_rec_resource}.cognitiveservices.azure.com/"
         os.environ["FORM_RECOGNIZER_KEY"] = args.form_rec_key
@@ -418,12 +426,12 @@ if __name__ == "__main__":
             form_recognizer_client = DocumentAnalysisClient(endpoint=f"https://{args.form_rec_resource}.cognitiveservices.azure.com/", credential=AzureKeyCredential(args.form_rec_key))
         print(f"Using Form Recognizer resource {args.form_rec_resource} for PDF cracking, with the {'Layout' if args.form_rec_use_layout else 'Read'} model.")
 
-    for index_config in config:
-        print("Preparing data for index:", index_config["index_name"])
-        if index_config.get("vector_config_name") and not args.embedding_model_endpoint:
-            raise Exception("ERROR: Vector search is enabled in the config, but no embedding model endpoint and key were provided. Please provide these values or disable vector search.")
-    
-        create_index(index_config, credential, form_recognizer_client, embedding_model_endpoint=args.embedding_model_endpoint, use_layout=args.form_rec_use_layout, njobs=args.njobs)
-        print("Data preparation for index", index_config["index_name"], "completed")
+    #for index_config in config:
+    print("Preparing data for index:", index_config["index_name"])
+    if index_config.get("vector_config_name") and not args.embedding_model_endpoint:
+        raise Exception("ERROR: Vector search is enabled in the config, but no embedding model endpoint and key were provided. Please provide these values or disable vector search.")
 
-    print(f"Data preparation script completed. {len(config)} indexes updated.")
+    create_index(index_config, credential, form_recognizer_client, embedding_model_endpoint=args.embedding_model_endpoint, use_layout=args.form_rec_use_layout, njobs=args.njobs)
+    print("Data preparation for index", index_config["index_name"], "completed")
+
+    print(f"Data preparation script completed. 1 indexes updated.")
