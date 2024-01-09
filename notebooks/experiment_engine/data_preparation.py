@@ -178,7 +178,7 @@ def create_or_update_search_index(
             {
                 "name": "doc_type",
                 "type": "Edm.String",
-                "searchable": False,
+                "searchable": True,
                 "sortable": False,
                 "facetable": True,
                 "filterable": True,
@@ -374,8 +374,8 @@ def create_index(config, credential, form_recognizer_client=None, embedding_mode
     if config.get("vector_config_name") and embedding_model_endpoint:
         add_embeddings = True
 
-    result = chunk_directory(config["data_path"], num_tokens=config["chunk_size"], token_overlap=config.get("token_overlap",0),
-                             form_recognizer_client=form_recognizer_client, use_layout=use_layout, njobs=njobs,
+    result = chunk_directory(config["data_path"],
+                             njobs=njobs,
                              add_embeddings=add_embeddings)
 
     if len(result.chunks) == 0:

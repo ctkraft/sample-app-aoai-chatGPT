@@ -1,5 +1,6 @@
 """Data utilities for index preparation."""
 import ast
+import uuid
 from asyncio import sleep
 import html
 import json
@@ -15,6 +16,7 @@ from functools import partial
 from typing import List, Dict, Optional, Generator, Tuple
 
 import markdown
+import pandas as pd
 import tiktoken
 from tqdm import tqdm
 from azure.identity import DefaultAzureCredential
@@ -42,7 +44,8 @@ FILE_FORMAT_DICT = {
         "py": "python",
         "pdf": "pdf",
         "json": "json",
-        "docx": "docx"
+        "docx": "docx",
+        "csv": "csv"
     }
 
 RETRY_COUNT = 5
@@ -245,7 +248,6 @@ class JSONParser(BaseParser):
         content_dump = json.dumps(content)
         return Document(content=content_dump, title=content["title"])
 
-
 class ParserFactory:
     def __init__(self):
         self._parsers = {
@@ -352,12 +354,11 @@ def convert_escaped_to_posix(escaped_path):
     posix_path = windows_path.replace("\\", "/")
     return posix_path
 
-def _get_file_format(file_name: str, extensions_to_process: List[str]) -> Optional[str]:
+def _get_file_format(file_name: str) -> Optional[str]:
     """Gets the file format from the file name.
     Returns None if the file format is not supported.
     Args:
         file_name (str): The file name.
-        extensions_to_process (List[str]): List of extensions to process.
     Returns:
         str: The file format.
     """
@@ -365,7 +366,7 @@ def _get_file_format(file_name: str, extensions_to_process: List[str]) -> Option
     # in case the caller gives us a file path
     file_name = os.path.basename(file_name)
     file_extension = file_name.split(".")[-1]
-    if file_extension not in extensions_to_process:
+    if file_extension not in FILE_FORMAT_DICT.keys():
         return None
     return FILE_FORMAT_DICT.get(file_extension, None)
 
@@ -400,9 +401,6 @@ def chunk_content_helper(
 
     parser = parser_factory(file_format)
     doc = parser.parse(content, file_name=file_name)
-    llama_doc = LlamaDocument(text=doc.content, metadata={"file_name": file_name, "title": doc.title})
-
-    # if the original doc after parsing is < num_tokens return as it is
     doc_content_size = TOKEN_ESTIMATOR.estimate_tokens(doc.content)
 
     if file_format == "json" or doc_content_size < settings.PREP_CONFIG["chunk_size"]:
@@ -413,7 +411,7 @@ def chunk_content_helper(
             token_overlap=settings.PREP_CONFIG["token_overlap"], 
             extractor_llm=extractor_llm
         )
-        
+        llama_doc = LlamaDocument(text=doc.content, metadata={"file_name": file_name, "title": doc.title})
         nodes = llama_splitter.get_nodes_from_doc(llama_doc, settings.PREP_CONFIG.get("split_mods", []))
         
         for node in nodes:
@@ -445,7 +443,7 @@ def chunk_content(
     """
     ignore_errors = False
     try:
-        if file_format != "json": 
+        if file_format not in ["json", "csv"]: 
             file_format = "text"
         
         extractor_llm = LlamaAOAI(
@@ -468,6 +466,14 @@ def chunk_content(
         skipped_chunks = 0
         for node, chunk_size, llama_doc in nodes:
             if chunk_size >= min_chunk_size:
+                chunk = Document(
+                            id=node.id_,
+                            doc_type=doc_type,
+                            content=node.text,
+                            title=node.metadata["title"],
+                            url=url,
+                            metadata=node.metadata
+                        )
                 if add_embeddings:
                     for _ in range(RETRY_COUNT):
                         try:
@@ -475,26 +481,16 @@ def chunk_content(
                                 content = json.dumps(node.metadata)
                             else:
                                 content = f"{node.text}\n\nMETADATA: {node.metadata}"
-                            
                             contentVector = get_embedding(content)
                             break
                         except:
+                            contentVector = None
                             sleep(30)
                     if contentVector is None:
                         raise Exception(f"Error getting embedding for chunk={node}")
-                    
+                    chunk.contentVector = contentVector
+                chunks.append(chunk)
 
-                chunks.append(
-                    Document(
-                        id=node.id_,
-                        doc_type=doc_type,
-                        content=node.text,
-                        title=node.metadata["title"],
-                        url=url,
-                        contentVector=contentVector,
-                        metadata=node.metadata
-                    )
-                )
             else:
                 skipped_chunks += 1
 
@@ -517,15 +513,46 @@ def chunk_content(
         skipped_chunks=skipped_chunks,
     )
 
+def chunk_qfr(
+        file_path: str = "",
+        add_embeddings: bool = False
+):
+    qfrs_df = pd.read_csv(file_path)
+    chunks = []
+    for idx, row in qfrs_df.iterrows():
+        text = f"QUESTION: {row['Question']}\nRESPONSE: {row['Response']}"
+        chunk = Document(
+                    id=f"qfr-{uuid.uuid4()}",
+                    doc_type="qfr",
+                    content=text,
+                    title=row["Question"],
+                    url=None,
+                    metadata={}
+                )
+        if add_embeddings:
+            for _ in range(RETRY_COUNT):
+                try:
+                    contentVector = get_embedding(text)
+                    break
+                except:
+                    contentVector = None
+                    sleep(30)
+            if contentVector is None:
+                raise Exception(f"Error getting embedding for chunk={text}")
+            chunk.contentVector = contentVector
+        chunks.append(chunk)
+    
+    return ChunkingResult(
+        chunks=chunks,
+        total_files=1,
+        skipped_chunks=0
+    )
+
 def chunk_file(
     file_path: str,
     ignore_errors: bool = True,
-    num_tokens=1024,
     min_chunk_size=10,
     url = None,
-    token_overlap: int = 0,
-    extensions_to_process = FILE_FORMAT_DICT.keys(),
-    use_layout = False,
     add_embeddings=False
 ) -> ChunkingResult:
     """Chunks the given file.
@@ -536,7 +563,7 @@ def chunk_file(
     """
     file_name = os.path.basename(file_path)
     doc_type = os.path.basename(os.path.dirname(file_path))
-    file_format = _get_file_format(file_name, extensions_to_process)
+    file_format = _get_file_format(file_name)
     if not file_format:
         if ignore_errors:
             return ChunkingResult(
@@ -549,10 +576,12 @@ def chunk_file(
         with open(file_path) as f:
             content = json.load(f)
     
+    elif doc_type == "qfr":
+        return chunk_qfr(file_path, add_embeddings)
+    
     else:
         file_converter = FileConverter(file_format)
         content = file_converter.extract_text(file_path)
-        
         
     return chunk_content(
         content=content,
@@ -561,9 +590,7 @@ def chunk_file(
         doc_type=doc_type,
         url=url,
         ignore_errors=ignore_errors,
-        num_tokens=num_tokens,
         min_chunk_size=min_chunk_size,
-        token_overlap=max(0, token_overlap),
         add_embeddings=add_embeddings
     )
 
@@ -572,13 +599,8 @@ def process_file(
         file_path: str, # !IMP: Please keep this as the first argument
         directory_path: str,
         ignore_errors: bool = True,
-        num_tokens: int = 1024,
         min_chunk_size: int = 10,
         url_prefix = None,
-        token_overlap: int = 0,
-        extensions_to_process: List[str] = FILE_FORMAT_DICT.keys(),
-        form_recognizer_client = None,
-        use_layout = False,
         add_embeddings = False
     ):
 
@@ -593,12 +615,8 @@ def process_file(
         result = chunk_file(
             file_path,
             ignore_errors=ignore_errors,
-            num_tokens=num_tokens,
             min_chunk_size=min_chunk_size,
             url=url_path,
-            token_overlap=token_overlap,
-            extensions_to_process=extensions_to_process,
-            use_layout=use_layout,
             add_embeddings=add_embeddings
         )
         for chunk_idx, chunk_doc in enumerate(result.chunks):
@@ -616,32 +634,20 @@ def process_file(
 def chunk_directory(
         directory_path: str,
         ignore_errors: bool = True,
-        num_tokens: int = 1024,
         min_chunk_size: int = 10,
         url_prefix = None,
-        token_overlap: int = 0,
-        extensions_to_process: List[str] = list(FILE_FORMAT_DICT.keys()),
-        form_recognizer_client = None,
-        use_layout = False,
         njobs=4,
         add_embeddings = False,
-        azure_credential = None,
-        embedding_endpoint = None
 ):
     """
     Chunks the given directory recursively
     Args:
         directory_path (str): The directory to chunk.
         ignore_errors (bool): If true, ignores errors and returns None.
-        num_tokens (int): The number of tokens to use for chunking.
         min_chunk_size (int): The minimum chunk size.
         url_prefix (str): The url prefix to use for the files. If None, the url will be None. If not None, the url will be url_prefix + relpath. 
                             For example, if the directory path is /home/user/data and the url_prefix is https://example.com/data, 
                             then the url for the file /home/user/data/file1.txt will be https://example.com/data/file1.txt
-        token_overlap (int): The number of tokens to overlap between chunks.
-        extensions_to_process (List[str]): The list of extensions to process. 
-        form_recognizer_client: Optional form recognizer client to use for pdf files.
-        use_layout (bool): If true, uses Layout model for pdf files. Otherwise, uses Read.
         add_embeddings (bool): If true, adds a vector embedding to each chunk using the embedding model endpoint and key.
 
     Returns:
@@ -665,14 +671,9 @@ def chunk_directory(
             result, is_error = process_file(
                 file_path=file_path,
                 directory_path=directory_path, 
-                ignore_errors=ignore_errors,                       
-                num_tokens=num_tokens,
+                ignore_errors=ignore_errors,      
                 min_chunk_size=min_chunk_size, 
                 url_prefix=url_prefix,
-                token_overlap=token_overlap,
-                extensions_to_process=extensions_to_process,
-                form_recognizer_client=form_recognizer_client, 
-                use_layout=use_layout, 
                 add_embeddings=add_embeddings
             )
             if is_error:
@@ -688,13 +689,8 @@ def chunk_directory(
             process_file, 
             directory_path=directory_path, 
             ignore_errors=ignore_errors,
-            num_tokens=num_tokens,
             min_chunk_size=min_chunk_size, 
             url_prefix=url_prefix,
-            token_overlap=token_overlap,
-            extensions_to_process=extensions_to_process,
-            form_recognizer_client=None, 
-            use_layout=use_layout, 
             add_embeddings=add_embeddings,)
         with ProcessPoolExecutor(max_workers=njobs) as executor:
             futures = list(tqdm(executor.map(process_file_partial, files_to_process), total=len(files_to_process)))
