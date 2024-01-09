@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     AZURE_SEARCH_VECTOR_COLUMNS: str = ""
     AZURE_SEARCH_QUERY_TYPE: str = ""
     AZURE_SEARCH_PERMITTED_GROUPS_COLUMN: str = ""
+    AZURE_SEARCH_DOC_TYPES: str = ""
     AZURE_OPENAI_RESOURCE: str = ""
     AZURE_OPENAI_MODEL: str = ""
     AZURE_OPENAI_KEY: str = ""
@@ -58,6 +59,7 @@ class Settings(BaseSettings):
         self.AZURE_SEARCH_USE_SEMANTIC_SEARCH = version_env["AZURE_SEARCH_USE_SEMANTIC_SEARCH"]
         self.AZURE_SEARCH_TOP_K = version_env["AZURE_SEARCH_TOP_K"]
         self.AZURE_SEARCH_QUERY_TYPE = version_env["AZURE_SEARCH_QUERY_TYPE"]
+        self.AZURE_SEARCH_DOC_TYPES = version_env.get("AZURE_SEARCH_DOC_TYPES", "")
         self.AZURE_OPENAI_TEMPERATURE = version_env["AZURE_OPENAI_TEMPERATURE"]
         self.AZURE_OPENAI_TOP_P = version_env["AZURE_OPENAI_TOP_P"]
         self.AZURE_OPENAI_SYSTEM_MESSAGE = version_env["AZURE_OPENAI_SYSTEM_MESSAGE"]
