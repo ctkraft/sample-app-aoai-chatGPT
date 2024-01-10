@@ -1,4 +1,5 @@
 """Data utilities for index preparation."""
+from pathlib import Path
 import ast
 import uuid
 from asyncio import sleep
@@ -99,13 +100,13 @@ class FileConverter:
     def __init__(self, filetype):
         converter_map = {
             "pdf": "PDFReader",
-            "docx": "file/docx"
+            "docx": "DocxReader"
         }
         Reader = download_loader(converter_map[filetype])
         self.loader = Reader()
     
     def extract_text(self, file_path):
-        documents = self.loader.load_data(file=file_path)
+        documents = self.loader.load_data(file=Path(file_path))
         full_text = "".join([doc.text for doc in documents])
 
         return full_text
