@@ -51,7 +51,7 @@ export const historyList = async (): Promise<Conversation[] | null> => {
                 return res
             })
             .catch((err) => {
-                console.error("error fetching messages: ", err)
+                console.error("There was an error fetching messages.")
                 return []
             })
             const conversation: Conversation = {

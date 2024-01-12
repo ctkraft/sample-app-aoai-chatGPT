@@ -257,7 +257,7 @@
         "cosmosdb_account_name": "[format('db-{0}', parameters('WebsiteName'))]",
         "cosmosdb_database_name": "db_conversation_history",
         "cosmosdb_container_name": "conversations",
-        "roleDefinitionId": "00000000-0000-0000-0000-000000000002", // Cosmos DB Built-in Data Contributor Role
+        "roleDefinitionId": "00000000-0000-0000-0000-000000000002",
         "roleAssignmentId": "[guid(variables('roleDefinitionId'), parameters('WebsiteName'), resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosdb_account_name')))]"
     },
     "resources": [
@@ -287,6 +287,7 @@
                 "type": "SystemAssigned"
             },
             "properties": {
+                "httpsOnly": true,
                 "serverFarmId": "[parameters('HostingPlanName')]",
                 "siteConfig": {
                     "appSettings": [
@@ -423,6 +424,7 @@
                             "value": "[variables('cosmosdb_container_name')]"
                         }
                     ],
+                    "minTlsVersion": "1.2",
                     "linuxFxVersion": "[variables('WebAppImageName')]"
                 }
             }
