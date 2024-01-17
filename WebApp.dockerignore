@@ -1,3 +1,5 @@
 WebApp.Dockerfile
 WebApp.dockerignore
 frontend/node_modules
+data/
+notebooks/
