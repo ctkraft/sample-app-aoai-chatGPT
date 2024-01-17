@@ -424,6 +424,11 @@ const Chat = () => {
         setProcessMessages(messageStatus.Done)
     };
 
+    const clearNewChat = () => {
+        clearChat()
+        newChat()
+    };
+
     const stopGenerating = () => {
         abortFuncs.current.forEach(a => a.abort());
         setShowLoadingMessage(false);
@@ -544,7 +549,7 @@ const Chat = () => {
                                     className={styles.chatIcon}
                                     aria-hidden="true"
                                 />
-                                <h1 className={styles.chatEmptyStateTitle}>FEMA GPT</h1>
+                                <h1 className={styles.chatEmptyStateTitle}>FEMA OCFO GPT</h1>
                                 <h2 className={styles.chatEmptyStateSubtitle}>Here to answer your budget questions...</h2>
                             </Stack>
                         ) : (
@@ -607,26 +612,7 @@ const Chat = () => {
                                 </Stack>
                             )}
                             <Stack>
-                                {appStateContext?.state.isCosmosDBAvailable?.status !== CosmosDBStatus.NotConfigured && <CommandBarButton
-                                    role="button"
-                                    styles={{ 
-                                        icon: { 
-                                            color: '#FFFFFF',
-                                        },
-                                        root: {
-                                            color: '#FFFFFF',
-                                            background: "radial-gradient(109.81% 107.82% at 100.1% 90.19%, #0F6CBD 33.63%, #2D87C3 70.31%, #8DDDD8 100%)"
-                                        },
-                                        rootDisabled: {
-                                            background: "#BDBDBD"
-                                        }
-                                    }}
-                                    className={styles.newChatIcon}
-                                    iconProps={{ iconName: 'Add' }}
-                                    onClick={newChat}
-                                    disabled={disabledButton()}
-                                    aria-label="start a new chat button"
-                                />}
+                                
                                 <CommandBarButton
                                     role="button"
                                     styles={{ 
@@ -641,7 +627,7 @@ const Chat = () => {
                                     }}
                                     className={appStateContext?.state.isCosmosDBAvailable?.status !== CosmosDBStatus.NotConfigured ? styles.clearChatBroom : styles.clearChatBroomNoCosmos}
                                     iconProps={{ iconName: 'Broom' }}
-                                    onClick={clearChat}
+                                    onClick={clearNewChat}
                                     disabled={disabledButton()}
                                     aria-label="clear chat button"
                                 />
