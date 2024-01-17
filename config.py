@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     AZURE_SEARCH_VECTOR_COLUMNS: str = ""
     AZURE_SEARCH_QUERY_TYPE: str = ""
     AZURE_SEARCH_PERMITTED_GROUPS_COLUMN: str = ""
-    AZURE_SEARCH_DOC_TYPES: str = ""
     AZURE_OPENAI_RESOURCE: str = ""
     AZURE_OPENAI_MODEL: str = ""
     AZURE_OPENAI_KEY: str = ""
