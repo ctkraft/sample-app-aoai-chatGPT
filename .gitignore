@@ -4,6 +4,15 @@ version_settings.json
 .venv
 frontend/node_modules
 .env
+*.env
+test.ipynb
+*.sqlite
+**/.streamlit
+**/config.json
 # static
+static/assets/*.js
+static/assets/*.js.map
+static/assets/*.css
+data/
 .azure/
 __pycache__/

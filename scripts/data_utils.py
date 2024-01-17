@@ -1,6 +1,8 @@
 """Data utilities for index preparation."""
+from pathlib import Path
 import ast
 import uuid
+import sys
 from asyncio import sleep
 import html
 import json
@@ -33,6 +35,7 @@ from llama_index.llms import AzureOpenAI as LlamaAOAI
 import nest_asyncio
 nest_asyncio.apply()
 
+sys.path.append(os.getcwd() + '/..')
 from config import settings
 
 FILE_FORMAT_DICT = {
@@ -94,22 +97,88 @@ def cleanup_content(content: str) -> str:
 
     return output.strip()
 
+def set_page_headers(pages):
+    for i, page in enumerate(pages):
+        header_text = ""
+        lines = page.text.split("\n")
+
+        for line in lines:
+            line = ' '.join(line.split())
+            if len(f"{header_text}\n{line}") < 200:
+                header_text = f"{header_text}\n{line}"
+            else:
+                break
+
+        pages[i].metadata["header"] = header_text
+        pages[i].text = cleanup_content(pages[i].text)
+    
+    return pages
+
+def find_overlap(string1, string2):  
+    min_length = min(len(string1), len(string2))  
+    if string2 in string1 or string2 == string1:
+        return "inside"
+    elif string1 in string2:
+        return "outside"
+
+    for size in range(min_length, 200, -1):  
+        if string1[-size:] == string2[:size]:  
+            return "end"
+        elif string1[:size] == string2[-size:]:
+            return "beginning"  
+    return "none"
+  
+def map_node_to_page(node, pages, doc_type):
+    i = 0
+    section_header = "Sections:"
+    node_pages = []
+
+    while i < len(pages):
+        if find_overlap(pages[i].text, node.text) != "none":
+            section_header += f"{pages[i].metadata['header']}\n---"
+            node_pages.append(pages[i].metadata["page_label"])
+            i += 1
+        
+        else:
+            if node_pages:
+                break
+            else:
+                i += 1
+
+    node.metadata["pages"] = ", ".join(node_pages)
+    node.text = f"Page(s): {node.metadata['pages']}\n---\nContent:\n{node.text}"
+    
+    if doc_type == "congressional_budget_justification":
+        node.text = f"{section_header}\n" + node.text
+    
+    return node, i-1
+
+def process_nodes(nodes, pages, doc_type):
+    for i in tqdm(range(len(nodes))):
+        nodes[i], curr_page_idx = map_node_to_page(nodes[i], pages, doc_type)
+        pages = pages[curr_page_idx:]
+    
+    return nodes
 
 class FileConverter:
     def __init__(self, filetype):
         converter_map = {
             "pdf": "PDFReader",
-            "docx": "file/docx"
+            "docx": "DocxReader"
         }
         Reader = download_loader(converter_map[filetype])
         self.loader = Reader()
+        self.filetype = filetype
     
-    def extract_text(self, file_path):
-        documents = self.loader.load_data(file=file_path)
-        full_text = "".join([doc.text for doc in documents])
+    def extract_pages(self, file_path):
+        pages = self.loader.load_data(file=file_path)
+        if self.filetype == "pdf":
+            pages = set_page_headers(pages)
+        return pages
 
+    def extract_text(self, pages):
+        full_text = "".join([page.text for page in pages])
         return full_text
-        
 
 class BaseParser(ABC):
     """A parser parses content to produce a document."""
@@ -276,17 +345,17 @@ class LlamaIndexSplitter:
         parser = LangchainNodeParser(splitter)
         self.parser = parser
         self.extractor_llm = extractor_llm
-        self.split_mods_map = {
-            "summary_extraction": SummaryExtractor(summaries=["prev", "self", "next"], llm=extractor_llm),
-            "qa_extraction": QuestionsAnsweredExtractor(questions=3, llm=extractor_llm)
-        }
+        # self.split_mods_map = {
+        #     "summary_extraction": SummaryExtractor(summaries=["prev", "self", "next"], llm=extractor_llm),
+        #     "qa_extraction": QuestionsAnsweredExtractor(questions=3, llm=extractor_llm)
+        # }
     
-    def get_nodes_from_doc(self, llama_doc, split_mods):
-        if split_mods and self.extractor_llm == None:
-            raise ValueError(f"extractor_llm argument is required to apply modifications during splitting")
+    def get_nodes_from_doc(self, llama_doc, split_mods=None):
+        # if split_mods and self.extractor_llm == None:
+        #     raise ValueError(f"extractor_llm argument is required to apply modifications during splitting")
 
         pipeline = IngestionPipeline(
-            transformations=[self.parser] + [self.split_mods_map[mod] for mod in split_mods]
+            transformations=[self.parser]# + [self.split_mods_map[mod] for mod in split_mods]
         )
 
         nodes = pipeline.run(
@@ -393,9 +462,11 @@ def get_embedding(text):
 
 
 def chunk_content_helper(
-        content: str, 
+        pages: List[LlamaDocument], 
+        content: str,
         file_format: str, 
         file_name: Optional[str],
+        doc_type: str,
         extractor_llm = None
 ) -> Generator[Tuple[str, int, Document], None, None]:
 
@@ -409,16 +480,18 @@ def chunk_content_helper(
         llama_splitter = LlamaIndexSplitter(
             num_tokens=settings.PREP_CONFIG["chunk_size"], 
             token_overlap=settings.PREP_CONFIG["token_overlap"], 
-            extractor_llm=extractor_llm
+            # extractor_llm=extractor_llm
         )
-        llama_doc = LlamaDocument(text=doc.content, metadata={"file_name": file_name, "title": doc.title})
-        nodes = llama_splitter.get_nodes_from_doc(llama_doc, settings.PREP_CONFIG.get("split_mods", []))
-        
+        llama_doc = LlamaDocument(text=content, metadata={"file_name": file_name, "title": doc.title})
+        nodes = llama_splitter.get_nodes_from_doc(llama_doc)
+        nodes = process_nodes(nodes, pages, doc_type)
+
         for node in nodes:
             chunk_size = TOKEN_ESTIMATOR.estimate_tokens(node.text)
             yield node, chunk_size, llama_doc
 
 def chunk_content(
+    pages: List[LlamaDocument],
     content: str,
     file_name: Optional[str] = None,
     file_format: Optional[str] = None,
@@ -446,20 +519,22 @@ def chunk_content(
         if file_format not in ["json", "csv"]: 
             file_format = "text"
         
-        extractor_llm = LlamaAOAI(
-                model=settings.AZURE_OPENAI_MODEL_NAME,
-                deployment_name=settings.AZURE_OPENAI_MODEL,
-                api_key=settings.AZURE_OPENAI_KEY,
-                azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
-                api_version=settings.AZURE_OPENAI_PREVIEW_API_VERSION,
-                system_prompt=settings.AZURE_OPENAI_SYSTEM_MESSAGE
-            )
+        # extractor_llm = LlamaAOAI(
+        #         model=settings.AZURE_OPENAI_MODEL_NAME,
+        #         deployment_name=settings.AZURE_OPENAI_MODEL,
+        #         api_key=settings.AZURE_OPENAI_KEY,
+        #         azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
+        #         api_version=settings.AZURE_OPENAI_PREVIEW_API_VERSION,
+        #         system_prompt=settings.AZURE_OPENAI_SYSTEM_MESSAGE
+        #     )
 
         nodes = chunk_content_helper(
+            pages=pages,
             content=content,
             file_name=file_name,
             file_format=file_format,
-            extractor_llm=extractor_llm
+            doc_type=doc_type
+           # extractor_llm=extractor_llm
         )
         
         chunks = []
@@ -581,9 +656,11 @@ def chunk_file(
     
     else:
         file_converter = FileConverter(file_format)
-        content = file_converter.extract_text(file_path)
+        pages = file_converter.extract_pages(Path(file_path))
+        content = file_converter.extract_text(pages)
         
     return chunk_content(
+        pages=pages,
         content=content,
         file_name=file_name,
         file_format=file_format,
