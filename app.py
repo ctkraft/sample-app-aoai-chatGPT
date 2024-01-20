@@ -77,12 +77,16 @@ def augment_dollars_prompt(messages: list[dict[str, str]]) -> list[dict[str, str
     return messages
 
 def get_filter(messages: list[dict[str, str]]):
-    accepted_filters = ["congressional_budget_justification", "qfr", "supplemental"]
+    filter_map = {
+        "c": "congressional_budget_justification", 
+        "q": "qfr", 
+        "s": "supplemental"
+    }
     
     user_msg_segmented = messages[-1]["content"].split("***")
     if len(user_msg_segmented) > 1:
-        filter_list = user_msg_segmented.pop(1).split(",")
-        filter_list = [f"doc_type eq '{f}'" for f in filter_list if f in accepted_filters]
+        filter_list = [f.strip() for f in user_msg_segmented.pop(1).split(",")]
+        filter_list = [f"doc_type eq '{filter_map[f]}'" for f in filter_list if f in filter_map.keys()]
 
         if filter_list:
             filter = " or ".join(filter_list)
