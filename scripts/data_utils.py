@@ -130,12 +130,12 @@ def find_overlap(string1, string2):
   
 def map_node_to_page(node, pages, doc_type):
     i = 0
-    section_header = "Sections:"
+    section_header = "<b>Sections:</b>"
     node_pages = []
 
     while i < len(pages):
         if find_overlap(pages[i].text, node.text) != "none":
-            section_header += f"{pages[i].metadata['header']}\n---"
+            section_header += f"\n{pages[i].metadata['header']}\n"
             node_pages.append(pages[i].metadata["page_label"])
             i += 1
         
@@ -146,7 +146,7 @@ def map_node_to_page(node, pages, doc_type):
                 i += 1
 
     node.metadata["pages"] = ", ".join(node_pages)
-    node.text = f"Page(s): {node.metadata['pages']}\n---\nContent:\n{node.text}"
+    node.text = f"<b>Page(s)</b>: {node.metadata['pages']}\n\n<b>Content:</b>\n{node.text}"
     
     if doc_type == "congressional_budget_justification":
         node.text = f"{section_header}\n" + node.text
@@ -484,7 +484,9 @@ def chunk_content_helper(
         )
         llama_doc = LlamaDocument(text=content, metadata={"file_name": file_name, "title": doc.title})
         nodes = llama_splitter.get_nodes_from_doc(llama_doc)
-        nodes = process_nodes(nodes, pages, doc_type)
+
+        if _get_file_format(file_name) == "pdf":
+            nodes = process_nodes(nodes, pages, doc_type)
 
         for node in nodes:
             chunk_size = TOKEN_ESTIMATOR.estimate_tokens(node.text)
