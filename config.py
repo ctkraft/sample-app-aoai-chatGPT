@@ -1,5 +1,6 @@
 import os
 import json
+from definitions import ROOT_DIR
 
 from pydantic import BaseSettings
 
@@ -21,6 +22,9 @@ class Settings(BaseSettings):
     AZURE_SEARCH_VECTOR_COLUMNS: str = ""
     AZURE_SEARCH_QUERY_TYPE: str = ""
     AZURE_SEARCH_PERMITTED_GROUPS_COLUMN: str = ""
+    AZURE_USE_DOC_INTEL: bool = False
+    AZURE_DOC_INTEL_KEY: str = ""
+    AZURE_DOC_INTEL_ENDPOINT: str = ""
     AZURE_OPENAI_RESOURCE: str = ""
     AZURE_OPENAI_MODEL: str = ""
     AZURE_OPENAI_KEY: str = ""
@@ -53,10 +57,11 @@ class Settings(BaseSettings):
     PREP_CONFIG: dict = {}
 
     class Config:
-        env_file = f"vars.env"
+        env_file = os.path.join(ROOT_DIR, "vars.env")
         env_file_encoding = "utf-8"
 
     def get_version_configs(self):
+        self.DATA_PATH = os.path.join(ROOT_DIR, "data")
         self.PREP_CONFIG = {
             "data_path": self.DATA_PATH,
             "location": self.AZURE_LOCATION,
