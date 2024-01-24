@@ -10,7 +10,6 @@ from flask import Flask, Response, request, jsonify, send_from_directory
 #from backend.history.cosmosdbservice import CosmosConversationClient
 from config import settings
 
-print("SETTINGS:", settings)
 app = Flask(__name__, static_folder="static")
 
 # Static Files
