@@ -27,7 +27,9 @@ from azure.core.credentials import AzureKeyCredential
 from bs4 import BeautifulSoup
 from langchain.text_splitter import MarkdownTextSplitter, RecursiveCharacterTextSplitter, PythonCodeTextSplitter
 from llama_index import download_loader
+from llama_index.schema import TextNode
 from llama_index.node_parser import LangchainNodeParser
+from llama_index.text_splitter import SentenceSplitter
 from llama_index import Document as LlamaDocument
 from llama_index.extractors import TitleExtractor, SummaryExtractor, QuestionsAnsweredExtractor
 from llama_index.ingestion import IngestionPipeline
@@ -83,6 +85,21 @@ class Document(object):
     url: Optional[str] = None
     metadata: Optional[Dict] = None
     contentVector: Optional[List[float]] = None
+
+    def to_dict(self):
+        """
+        Returns the Dataset object in JSON compatible encoding
+        """
+        return {
+            "content": self.content,
+            "id": self.id,
+            "doc_type": self.doc_type,
+            "title": self.title,
+            "filepath": self.filepath,
+            "url": self.url,
+            "metadata": self.metadata,
+            "contentVector": self.contentVector
+        }
 
 def cleanup_content(content: str) -> str:
     """Cleans up the given content using regexes
@@ -146,19 +163,102 @@ def map_node_to_page(node, pages, doc_type):
                 i += 1
 
     node.metadata["pages"] = ", ".join(node_pages)
-    node.text = f"<b>Page(s)</b>: {node.metadata['pages']}\n\n<b>Content:</b>\n{node.text}"
+    node.text = f"<b>Page(s)</b>: {node.metadata['pages']}\n\nContent: {node.text}"
     
     if doc_type == "congressional_budget_justification":
         node.text = f"{section_header}\n" + node.text
     
     return node, i-1
 
-def process_nodes(nodes, pages, doc_type):
-    for i in tqdm(range(len(nodes))):
-        nodes[i], curr_page_idx = map_node_to_page(nodes[i], pages, doc_type)
-        pages = pages[curr_page_idx:]
+def doc_intel_map_node_to_page(node, pages, full_text):
+    node_text = node.text
+    start = full_text.index(node_text)
+    end = start + len(node_text)
+    
+    page_offsets = [page["offset"] for page in pages]
+    page_lens = [len(page["page_text"]) for page in pages]
+    start_found, end_found = False, False
+    for i, offset in enumerate(page_offsets):
+        if offset >= start and start_found == False:
+            if offset == start:
+                page_start = i+1 # Set page_start to the current page, which is i+1
+            else:
+                page_start = i # Set page_start to the previous page, which is i
+            start_found = True
+        if offset + page_lens[i] >= end and end_found == False:
+            page_end = i+1 # Set end_page to current page, which is i+1
+            end_found = True
+    
+    page_start = page_start if start_found == True else len(pages)
+    page_end = page_end if end_found == True else len(pages)
+    
+    node.metadata["pages"] = f"{page_start} - {page_end}" if page_start != page_end else str(page_start)
+    relevant_pages = pages[page_start:page_end+1]
+    #relevant_pages = [page for page in relevant_pages if len(page["page_text"])>200]
+    
+    section_header = "<b>Sections:</b>"
+    for page in relevant_pages:
+        page_header = "\n".join(para.content for para in page["paragraphs"][:2])
+        section_header += f"\n{page_header}\n"
+    
+    node.text = f"<p>{section_header}</p><p><b>Page(s)</b>: {node.metadata['pages']}</p><p><b>Content:</b></p><p>{node.text}</p>"
+
+    return node
+
+def doc_intel_tables_to_nodes(pages, llama_doc):
+    table_nodes = []
+    for i, page in enumerate(pages):
+        if len(page["tables"]) > 0:
+            for table in page["tables"]:
+                table_text = table["header"] + "\n" + table["table"]
+                section_header = "\n".join(para.content for para in page["paragraphs"][:2])
+                section_header = f"<p><b>Sections:</b></p><p>{section_header}</p>"
+                node_text = f"<p>{section_header}</p><p><b>Page(s)</b>: {i+1}</p><p><b>Content:</b></p><p>{table_text}</p>"
+                node_metadata = {
+                    "file_name": llama_doc.metadata["file_name"],
+                    "title": llama_doc.metadata["title"],
+                    "pages": str(i+1)
+                }
+                table_node = TextNode(text=node_text, id_=str(uuid.uuid4()), metadata=node_metadata)
+                table_nodes.append(table_node)
+    
+    return table_nodes
+
+def process_nodes(nodes, pages, content, doc_type, cracked_pdf, llama_doc):
+    if cracked_pdf == True:
+        for i in tqdm(range(len(nodes))):
+            nodes[i] = doc_intel_map_node_to_page(nodes[i], pages, content)
+        table_nodes = doc_intel_tables_to_nodes(pages, llama_doc) 
+        nodes += table_nodes
+    
+    else:
+        for i in tqdm(range(len(nodes))):
+            nodes[i], curr_page_idx = map_node_to_page(nodes[i], pages, doc_type)
+            pages = pages[curr_page_idx:]
     
     return nodes
+
+class SingletonDocIntelClient:
+    instance = None
+    url = settings.AZURE_DOC_INTEL_ENDPOINT
+    key = settings.AZURE_DOC_INTEL_KEY
+
+    def __new__(cls, *args, **kwargs):
+        if not cls.instance:
+            print("SingletonDocIntelClient: Creating instance of Form recognizer per process")
+            if cls.url and cls.key:
+                cls.instance = DocumentAnalysisClient(endpoint=cls.url, credential=AzureKeyCredential(cls.key))
+            else:
+                print("SingletonDocIntelClient: Skipping since credentials not provided. Assuming NO form recognizer extensions(like .pdf) in directory")
+                cls.instance = object() # dummy object
+        return cls.instance
+
+    def __getstate__(self):
+        return self.url, self.key
+
+    def __setstate__(self, state):
+        url, key = state
+        self.instance = DocumentAnalysisClient(endpoint=url, credential=AzureKeyCredential(key))
 
 class FileConverter:
     def __init__(self, filetype):
@@ -337,34 +437,34 @@ class ParserFactory:
 
         return parser
 
-class LlamaIndexSplitter:
-    def __init__(self, num_tokens, token_overlap, extractor_llm=None):
-        splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-            separators=SENTENCE_ENDINGS + WORDS_BREAKS,
-            chunk_size=num_tokens, chunk_overlap=token_overlap)
-        parser = LangchainNodeParser(splitter)
-        self.parser = parser
-        self.extractor_llm = extractor_llm
-        # self.split_mods_map = {
-        #     "summary_extraction": SummaryExtractor(summaries=["prev", "self", "next"], llm=extractor_llm),
-        #     "qa_extraction": QuestionsAnsweredExtractor(questions=3, llm=extractor_llm)
-        # }
+# class LlamaIndexSplitter:
+#     def __init__(self, num_tokens, token_overlap, extractor_llm=None):
+#         splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+#             separators=SENTENCE_ENDINGS + WORDS_BREAKS,
+#             chunk_size=num_tokens, chunk_overlap=token_overlap)
+#         parser = LangchainNodeParser(splitter)
+#         self.parser = parser
+#         self.extractor_llm = extractor_llm
+#         # self.split_mods_map = {
+#         #     "summary_extraction": SummaryExtractor(summaries=["prev", "self", "next"], llm=extractor_llm),
+#         #     "qa_extraction": QuestionsAnsweredExtractor(questions=3, llm=extractor_llm)
+#         # }
     
-    def get_nodes_from_doc(self, llama_doc, split_mods=None):
-        # if split_mods and self.extractor_llm == None:
-        #     raise ValueError(f"extractor_llm argument is required to apply modifications during splitting")
+#     def get_nodes_from_doc(self, llama_doc, split_mods=None):
+#         # if split_mods and self.extractor_llm == None:
+#         #     raise ValueError(f"extractor_llm argument is required to apply modifications during splitting")
 
-        pipeline = IngestionPipeline(
-            transformations=[self.parser]# + [self.split_mods_map[mod] for mod in split_mods]
-        )
+#         pipeline = IngestionPipeline(
+#             transformations=[self.parser]# + [self.split_mods_map[mod] for mod in split_mods]
+#         )
 
-        nodes = pipeline.run(
-            documents = [llama_doc],
-            in_place=True,
-            show_progress=True
-        )
+#         nodes = pipeline.run(
+#             documents = [llama_doc],
+#             in_place=True,
+#             show_progress=True
+#         )
 
-        return nodes
+#         return nodes
 
 class TokenEstimator(object):
     GPT2_TOKENIZER = tiktoken.get_encoding("gpt2")
@@ -403,6 +503,9 @@ class ChunkingResult:
     num_files_with_errors: int = 0
     # some chunks might be skipped to small number of tokens
     skipped_chunks: int = 0
+
+    def jsonify_chunks(self):
+        return [doc.to_dict() for doc in self.chunks]
 
 def get_files_recursively(directory_path: str) -> List[str]:
     """Gets all files in the given directory recursively.
@@ -462,41 +565,45 @@ def get_embedding(text):
 
 
 def chunk_content_helper(
-        pages: List[LlamaDocument], 
+        pages: list, 
         content: str,
-        file_format: str, 
         file_name: Optional[str],
-        doc_type: str,
-        extractor_llm = None
+        file_format: str,
+        cracked_pdf: bool,
+        doc_type: str
 ) -> Generator[Tuple[str, int, Document], None, None]:
 
     parser = parser_factory(file_format)
     doc = parser.parse(content, file_name=file_name)
     doc_content_size = TOKEN_ESTIMATOR.estimate_tokens(doc.content)
 
+    #chunks = []
+
     if file_format == "json" or doc_content_size < settings.PREP_CONFIG["chunk_size"]:
         yield doc.content, doc_content_size, doc
     else:
-        llama_splitter = LlamaIndexSplitter(
-            num_tokens=settings.PREP_CONFIG["chunk_size"], 
-            token_overlap=settings.PREP_CONFIG["token_overlap"], 
-            # extractor_llm=extractor_llm
+        sentence_splitter = SentenceSplitter(
+            chunk_size=settings.PREP_CONFIG["chunk_size"],
+            chunk_overlap=settings.PREP_CONFIG["token_overlap"]
         )
         llama_doc = LlamaDocument(text=content, metadata={"file_name": file_name, "title": doc.title})
-        nodes = llama_splitter.get_nodes_from_doc(llama_doc)
+        nodes = sentence_splitter.get_nodes_from_documents([llama_doc])
 
         if _get_file_format(file_name) == "pdf":
-            nodes = process_nodes(nodes, pages, doc_type)
+            nodes = process_nodes(nodes, pages, content, doc_type, cracked_pdf, llama_doc)
 
         for node in nodes:
             chunk_size = TOKEN_ESTIMATOR.estimate_tokens(node.text)
             yield node, chunk_size, llama_doc
+    
+    return nodes
 
 def chunk_content(
-    pages: List[LlamaDocument],
+    pages: list,
     content: str,
     file_name: Optional[str] = None,
     file_format: Optional[str] = None,
+    cracked_pdf: bool = False,
     doc_type: Optional[str] = None,
     url: Optional[str] = None,
     ignore_errors: bool = False,
@@ -517,72 +624,63 @@ def chunk_content(
         List[Document]: List of chunked documents.
     """
     ignore_errors = False
-    try:
-        if file_format not in ["json", "csv"]: 
-            file_format = "text"
-        
-        # extractor_llm = LlamaAOAI(
-        #         model=settings.AZURE_OPENAI_MODEL_NAME,
-        #         deployment_name=settings.AZURE_OPENAI_MODEL,
-        #         api_key=settings.AZURE_OPENAI_KEY,
-        #         azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
-        #         api_version=settings.AZURE_OPENAI_PREVIEW_API_VERSION,
-        #         system_prompt=settings.AZURE_OPENAI_SYSTEM_MESSAGE
-        #     )
+    #try:
+    if file_format not in ["json", "csv"]: 
+        file_format = "text"
 
-        nodes = chunk_content_helper(
-            pages=pages,
-            content=content,
-            file_name=file_name,
-            file_format=file_format,
-            doc_type=doc_type
-           # extractor_llm=extractor_llm
-        )
-        
-        chunks = []
-        skipped_chunks = 0
-        for node, chunk_size, llama_doc in nodes:
-            if chunk_size >= min_chunk_size:
-                chunk = Document(
-                            id=node.id_,
-                            doc_type=doc_type,
-                            content=node.text,
-                            title=node.metadata["title"],
-                            url=url,
-                            metadata=node.metadata
-                        )
-                if add_embeddings:
-                    for _ in range(RETRY_COUNT):
-                        try:
-                            if settings.PREP_CONFIG.get("split_mods", []):
-                                content = json.dumps(node.metadata)
-                            else:
-                                content = f"{node.text}\n\nMETADATA: {node.metadata}"
-                            contentVector = get_embedding(content)
-                            break
-                        except:
-                            contentVector = None
-                            sleep(30)
-                    if contentVector is None:
-                        raise Exception(f"Error getting embedding for chunk={node}")
-                    chunk.contentVector = contentVector
-                chunks.append(chunk)
+    nodes = chunk_content_helper(
+        pages=pages,
+        content=content,
+        file_name=file_name,
+        file_format=file_format,
+        cracked_pdf=cracked_pdf,
+        doc_type=doc_type
+    )
+    
+    chunks = []
+    skipped_chunks = 0
+    for node, chunk_size, llama_doc in nodes:
+        if chunk_size >= min_chunk_size:
+            chunk = Document(
+                        id=node.id_,
+                        doc_type=doc_type,
+                        content=node.text,
+                        title=node.metadata["title"],
+                        url=url,
+                        metadata=node.metadata
+                    )
+            if add_embeddings:
+                for _ in range(RETRY_COUNT):
+                    try:
+                        if settings.PREP_CONFIG.get("split_mods", []):
+                            content = json.dumps(node.metadata)
+                        else:
+                            content = f"{node.text}\n\nMETADATA: {node.metadata}"
+                        contentVector = get_embedding(content)
+                        break
+                    except:
+                        contentVector = None
+                        sleep(30)
+                if contentVector is None:
+                    raise Exception(f"Error getting embedding for chunk={node}")
+                chunk.contentVector = contentVector
+            chunks.append(chunk)
 
-            else:
-                skipped_chunks += 1
-
-    except UnsupportedFormatError as e:
-        if ignore_errors:
-            return ChunkingResult(
-                chunks=[], total_files=1, num_unsupported_format_files=1
-            )
         else:
-            raise e
-    except Exception as e:
-        if ignore_errors:
-            return ChunkingResult(chunks=[], total_files=1, num_files_with_errors=1)
-        else:
-            raise e
+            skipped_chunks += 1
+
+    # except UnsupportedFormatError as e:
+    #     if ignore_errors:
+    #         return ChunkingResult(
+    #             chunks=[], total_files=1, num_unsupported_format_files=1
+    #         )
+    #     else:
+    #         raise e
+    # except Exception as e:
+    #     if ignore_errors:
+    #         return ChunkingResult(chunks=[], total_files=1, num_files_with_errors=1)
+    #     else:
+    #         raise e
     
     return ChunkingResult(
         chunks=chunks,
@@ -625,6 +723,66 @@ def chunk_qfr(
         skipped_chunks=0
     )
 
+
+def table_to_html(table):
+    table_html = "<table>"
+    rows = [sorted([cell for cell in table.cells if cell.row_index == i], key=lambda cell: cell.column_index) for i in range(table.row_count)]
+    for row_cells in rows:
+        table_html += "<tr>"
+        for cell in row_cells:
+            tag = "th" if (cell.kind == "columnHeader" or cell.kind == "rowHeader") else "td"
+            cell_spans = ""
+            if cell.column_span > 1: cell_spans += f" colSpan={cell.column_span}"
+            if cell.row_span > 1: cell_spans += f" rowSpan={cell.row_span}"
+            table_html += f"<{tag}{cell_spans}>{html.escape(cell.content)}</{tag}>"
+        table_html +="</tr>"
+    table_html += "</table>"
+    return table_html
+
+
+def doc_intel_extract_pdf(file_path, doc_intel_client):
+    offset = 0
+    page_map = []
+    model = "prebuilt-layout"
+    with open(file_path, "rb") as f:
+        poller = doc_intel_client.begin_analyze_document(model, document = f)
+    form_recognizer_results = poller.result()
+
+    for page_num, page in enumerate(form_recognizer_results.pages):
+        paragraphs_on_page = [para for para in form_recognizer_results.paragraphs if para.bounding_regions[0].page_number == page_num + 1]
+        tables_on_page = [table for table in form_recognizer_results.tables if table.bounding_regions[0].page_number == page_num + 1]
+        html_tables_on_page = []
+        table_para_indices = []
+
+        for table_id, table in enumerate(tables_on_page):
+            found_table_start, found_table_end = False, False
+            for i, paragraph in enumerate(paragraphs_on_page):
+                if paragraph.spans[0].offset >= tables_on_page[table_id].spans[0].offset and found_table_start == False:
+                    table_para_idx_start = i-1
+                    found_table_start = True
+                elif paragraph.spans[0].offset >= table.spans[0].offset + table.spans[0].length and found_table_end == False:
+                    table_para_idx_end = i
+                    found_table_end = True
+            table_para_indices.append((table_para_idx_start, table_para_idx_end))
+            table_html = table_to_html(table)
+            table_header = paragraphs_on_page[table_para_idx_start].content
+            html_tables_on_page.append({"header": f"Table: {table_header}", "table": table_html})
+
+        # if len(tables_on_page) > 0:
+        #     for start, end in table_para_indices:
+        #         for i in range(len(paragraphs_on_page)):
+        #             if start <= i < end:
+        #                 paragraphs_on_page[i] = "" 
+        #     paragraphs_on_page = [para for para in paragraphs_on_page if para != ""]
+
+        # Track offset for each page, so when we use re.search(chunk) across the full doc text, we can map the output idx to the right page using offset
+        page_text = "\n".join([para.content for para in paragraphs_on_page])
+        page_map.append({"page_num": page_num, "offset": offset, "page_text": page_text, "paragraphs": paragraphs_on_page, "tables": html_tables_on_page})
+        offset += len(page_text)
+
+    full_text = "\n".join([page["page_text"] for page in page_map])
+    return page_map, full_text
+
 def chunk_file(
     file_path: str,
     ignore_errors: bool = True,
@@ -649,6 +807,8 @@ def chunk_file(
         else:
             raise UnsupportedFormatError(f"{file_name} is not supported")
 
+    cracked_pdf = False
+
     if file_format == "json":
         with open(file_path) as f:
             content = json.load(f)
@@ -656,7 +816,17 @@ def chunk_file(
     elif doc_type == "qfr":
         return chunk_qfr(file_path, add_embeddings)
     
+    elif file_format == "pdf" and settings.AZURE_USE_DOC_INTEL == True:
+        print(f"Chunking {file_name} with Document Intelligence")
+        doc_intel_client = DocumentAnalysisClient(
+            endpoint=settings.AZURE_DOC_INTEL_ENDPOINT, 
+            credential=AzureKeyCredential(settings.AZURE_DOC_INTEL_KEY)
+        )
+        pages, content = doc_intel_extract_pdf(file_path, doc_intel_client)
+        cracked_pdf = True
+    
     else:
+        print(f"Chunking {file_name} without Document Intelligence")
         file_converter = FileConverter(file_format)
         pages = file_converter.extract_pages(Path(file_path))
         content = file_converter.extract_text(pages)
@@ -666,6 +836,7 @@ def chunk_file(
         content=content,
         file_name=file_name,
         file_format=file_format,
+        cracked_pdf=cracked_pdf,
         doc_type=doc_type,
         url=url,
         ignore_errors=ignore_errors,
@@ -684,30 +855,30 @@ def process_file(
     ):
 
     is_error = False
-    try:
-        url_path = None
-        rel_file_path = os.path.relpath(file_path, directory_path)
-        if url_prefix:
-            url_path = url_prefix + rel_file_path
-            url_path = convert_escaped_to_posix(url_path)
+    #try:
+    url_path = None
+    rel_file_path = os.path.relpath(file_path, directory_path)
+    if url_prefix:
+        url_path = url_prefix + rel_file_path
+        url_path = convert_escaped_to_posix(url_path)
 
-        result = chunk_file(
-            file_path,
-            ignore_errors=ignore_errors,
-            min_chunk_size=min_chunk_size,
-            url=url_path,
-            add_embeddings=add_embeddings
-        )
-        for chunk_idx, chunk_doc in enumerate(result.chunks):
-            chunk_doc.filepath = rel_file_path
-            chunk_doc.metadata["chunk_idx"] = str(chunk_idx)
-            chunk_doc.metadata = json.dumps(chunk_doc.metadata)
-    except Exception as e:
-        if not ignore_errors:
-            raise
-        print(f"File ({file_path}) failed with ", e)
-        is_error = True
-        result =None
+    result = chunk_file(
+        file_path,
+        ignore_errors=ignore_errors,
+        min_chunk_size=min_chunk_size,
+        url=url_path,
+        add_embeddings=add_embeddings
+    )
+    for chunk_idx, chunk_doc in enumerate(result.chunks):
+        chunk_doc.filepath = rel_file_path
+        chunk_doc.metadata["chunk_idx"] = str(chunk_idx)
+        chunk_doc.metadata = json.dumps(chunk_doc.metadata)
+    # except Exception as e:
+    #     if not ignore_errors:
+    #         raise
+    #     print(f"File ({file_path}) failed with ", e)
+    #     is_error = True
+    #     result =None
     return result, is_error
 
 def chunk_directory(

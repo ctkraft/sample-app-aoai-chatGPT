@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime
 
 import requests
 import time
@@ -18,6 +19,7 @@ from data_utils import chunk_directory
 
 sys.path.append(os.getcwd() + '/..')
 from config import settings
+from definitions import ROOT_DIR
 
 SUPPORTED_LANGUAGE_CODES = {
     "ar": "Arabic",
@@ -383,6 +385,15 @@ def create_index(config, credential, embedding_model_endpoint=None, njobs=4):
 
     if len(result.chunks) == 0:
         raise Exception("No chunks found. Please check the data path and chunk size.")
+    else:
+        if settings.SAVE_DATA_LOCAL == True:
+            chunks_json_path = os.path.join(ROOT_DIR, "chunks_json")
+            if not os.path.exists(chunks_json_path):
+                os.mkdir(chunks_json_path)
+            chunks_json_file = os.path.join(chunks_json_path, f"{settings.AZURE_SEARCH_INDEX}_uploaded_{datetime.today().date()}.json")
+            with open(chunks_json_file, "w") as f:
+                json.dump(result.jsonify_chunks(), f)
+            print(f"Archived uploaded chunks to {chunks_json_file}")
 
     print(f"Processed {result.total_files} files")
     print(f"Unsupported formats: {result.num_unsupported_format_files} files")
@@ -407,8 +418,7 @@ def valid_range(n):
 
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--njobs", type=valid_range, default=4, help="Number of jobs to run (between 1 and 32). Default=4")
-    parser.add_argument("--embedding-model-endpoint", type=str, help="Endpoint for the embedding model to use for vector search. Format: 'https://<AOAI resource name>.openai.azure.com/openai/deployments/<Ada deployment name>/embeddings?api-version=2023-03-15-preview'")
+    parser.add_argument("--njobs", type=valid_range, default=1, help="Number of jobs to run (between 1 and 32). Default=1")
     args = parser.parse_args()
 
     index_config = settings.PREP_CONFIG
@@ -417,14 +427,12 @@ if __name__ == "__main__":
     form_recognizer_client = None
 
     print("Data preparation script started")
-    print("settings:", settings)
 
-    #for index_config in config:
     print("Preparing data for index:", index_config["index_name"])
-    if index_config.get("vector_config_name") and not args.embedding_model_endpoint:
+    if index_config.get("vector_config_name") and not settings.AZURE_OPENAI_EMBEDDING_ENDPOINT:
         raise Exception("ERROR: Vector search is enabled in the config, but no embedding model endpoint and key were provided. Please provide these values or disable vector search.")
 
-    create_index(index_config, credential, embedding_model_endpoint=args.embedding_model_endpoint, njobs=args.njobs)
+    create_index(index_config, credential, embedding_model_endpoint=settings.AZURE_OPENAI_EMBEDDING_ENDPOINT, njobs=args.njobs)
     print("Data preparation for index", index_config["index_name"], "completed")
 
     print(f"Data preparation script completed. 1 indexes updated.")

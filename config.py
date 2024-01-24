@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     AZURE_SEARCH_VECTOR_CONFIG_NAME: str = "default"
     AZURE_SEARCH_SEMANTIC_CONFIG_NAME: str = "default"
     AZURE_SEARCH_ANALYZER_LANGUAGE: str = "en"
+    SAVE_DATA_LOCAL: bool = ""
     PREP_CONFIG: dict = {}
 
     class Config:
