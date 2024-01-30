@@ -1,3 +1,5 @@
+import { Option } from "../components/QuestionInput"
+
 export type AskResponse = {
     answer: string;
     citations: Citation[];
@@ -26,6 +28,7 @@ export type ChatMessage = {
     content: string;
     end_turn?: boolean;
     date: string;
+    filters: Option[] | undefined;
 };
 
 export type Conversation = {

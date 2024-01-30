@@ -2,6 +2,7 @@ import React, { createContext, useReducer, ReactNode, useEffect } from 'react';
 import { appStateReducer } from './AppReducer';
 import { ChatHistoryLoadingState, CosmosDBHealth, historyList, historyEnsure, CosmosDBStatus } from '../api';
 import { Conversation } from '../api';
+import { Option } from '../components/QuestionInput/QuestionInput'
   
 export interface AppState {
     isChatHistoryOpen: boolean;
@@ -10,6 +11,7 @@ export interface AppState {
     chatHistory: Conversation[] | null;
     filteredChatHistory: Conversation[] | null;
     currentChat: Conversation | null;
+    filters: Option[] | null
 }
 
 export type Action =
@@ -18,12 +20,14 @@ export type Action =
     | { type: 'UPDATE_CHAT_HISTORY_LOADING_STATE', payload: ChatHistoryLoadingState }
     | { type: 'UPDATE_CURRENT_CHAT', payload: Conversation | null }
     | { type: 'UPDATE_FILTERED_CHAT_HISTORY', payload: Conversation[] | null }
+    | { type: 'SET_FILTERS', payload: Option[] | null}
     | { type: 'UPDATE_CHAT_HISTORY', payload: Conversation } // API Call
     | { type: 'UPDATE_CHAT_TITLE', payload: Conversation } // API Call
     | { type: 'DELETE_CHAT_ENTRY', payload: string } // API Call
     | { type: 'DELETE_CHAT_HISTORY'}  // API Call
     | { type: 'DELETE_CURRENT_CHAT_MESSAGES', payload: string }  // API Call
     | { type: 'FETCH_CHAT_HISTORY', payload: Conversation[] | null }  // API Call
+    
 
 const initialState: AppState = {
     isChatHistoryOpen: false,
@@ -34,7 +38,12 @@ const initialState: AppState = {
     isCosmosDBAvailable: {
         cosmosDB: false,
         status: CosmosDBStatus.NotConfigured,
-    }
+    },
+    filters: [
+        { label: "Congressional Budget Justifications", value: "congressional_budget_justifications" },
+        { label: "Questions for the Record", value: "qfr" },
+        { label: "Supplemental Documents", value: "supplemental"}
+    ]
 };
 
 export const AppStateContext = createContext<{

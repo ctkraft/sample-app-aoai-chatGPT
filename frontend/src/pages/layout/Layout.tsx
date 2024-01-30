@@ -5,8 +5,10 @@ import { CopyRegular, ShareRegular } from "@fluentui/react-icons";
 import { CommandBarButton, Dialog, Stack, TextField, ICommandBarStyles, IButtonStyles, DefaultButton  } from "@fluentui/react";
 import { useContext, useEffect, useState } from "react";
 import { HistoryButton, ShareButton } from "../../components/common/Button";
+import { Option, Filter } from "../../components/QuestionInput/QuestionInput"
 import { AppStateContext } from "../../state/AppProvider";
 import { CosmosDBStatus } from "../../api";
+import { SelectedProvider } from '../../state/SelectedContext'
 
 const shareButtonStyles: ICommandBarStyles & IButtonStyles = {
     root: {
@@ -58,6 +60,17 @@ const Layout = () => {
         appStateContext?.dispatch({ type: 'TOGGLE_CHAT_HISTORY' })
     };
 
+    const [selected, setSelected] = useState<Option[]>([])
+
+    const handleSelectedChange = (newSelected: Option[]) => {  
+        setSelected(newSelected)
+        var selected_values = []
+        for (var i = 0; i < selected.length; i++) {
+            selected_values.push(selected[i].value);
+        }
+        console.log("Selected values:", selected_values)
+    }; 
+
     useEffect(() => {
         if (copyClicked) {
             setCopyText("Copied URL");
@@ -82,7 +95,10 @@ const Layout = () => {
                             <h1 className={styles.headerTitle}>FEMA OCFO GPT</h1>
                         </Link>
                     </Stack>
-                    <Stack horizontal tokens={{ childrenGap: 4 }}>
+                    <Stack horizontal tokens={{ childrenGap: 4 }} className={styles.rightHeaderSection}>
+                            <SelectedProvider value={selected}>
+                                <Filter onSelectedChange={handleSelectedChange} />
+                            </SelectedProvider>
                             <ShareButton onClick={handleShareClick} />
                     </Stack>
 

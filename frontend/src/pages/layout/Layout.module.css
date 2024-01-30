@@ -111,3 +111,13 @@
     align-items: center;
     color: #242424;
 }
+
+.rightHeaderSection {
+    width: 50%
+}
+
+.filterTitle {
+    height: 80%;
+    justify-content: center;
+    align-items: center;
+}
