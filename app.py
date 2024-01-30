@@ -137,7 +137,8 @@ def get_filter(messages: list[dict[str, str]]):
 
 
 def prepare_body_headers_with_data(request):
-    request_messages = augment_dollars_prompt(request.json["messages"])
+    request_messages = request.json["messages"] # augment_dollars_prompt(request.json["messages"])
+    #print(request.json["messages"]["filters"])
 
     query_type = "simple"
     if settings.AZURE_SEARCH_QUERY_TYPE:
