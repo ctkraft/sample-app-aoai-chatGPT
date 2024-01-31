@@ -11,7 +11,7 @@ export interface AppState {
     chatHistory: Conversation[] | null;
     filteredChatHistory: Conversation[] | null;
     currentChat: Conversation | null;
-    filters: Option[] | null
+    filters: Option[] | undefined
 }
 
 export type Action =
@@ -20,7 +20,7 @@ export type Action =
     | { type: 'UPDATE_CHAT_HISTORY_LOADING_STATE', payload: ChatHistoryLoadingState }
     | { type: 'UPDATE_CURRENT_CHAT', payload: Conversation | null }
     | { type: 'UPDATE_FILTERED_CHAT_HISTORY', payload: Conversation[] | null }
-    | { type: 'SET_FILTERS', payload: Option[] | null}
+    | { type: 'SET_FILTERS', payload: Option[] | undefined}
     | { type: 'UPDATE_CHAT_HISTORY', payload: Conversation } // API Call
     | { type: 'UPDATE_CHAT_TITLE', payload: Conversation } // API Call
     | { type: 'DELETE_CHAT_ENTRY', payload: string } // API Call
@@ -39,11 +39,7 @@ const initialState: AppState = {
         cosmosDB: false,
         status: CosmosDBStatus.NotConfigured,
     },
-    filters: [
-        { label: "Congressional Budget Justifications", value: "congressional_budget_justifications" },
-        { label: "Questions for the Record", value: "qfr" },
-        { label: "Supplemental Documents", value: "supplemental"}
-    ]
+    filters: []
 };
 
 export const AppStateContext = createContext<{

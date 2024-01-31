@@ -30,7 +30,6 @@ import { Answer } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ChatHistoryPanel } from "../../components/ChatHistory/ChatHistoryPanel";
 import { AppStateContext } from "../../state/AppProvider";
-import { SelectedContext } from "../../state/SelectedContext";
 import { useBoolean } from "@fluentui/react-hooks";
 
 const enum messageStatus {
@@ -41,7 +40,6 @@ const enum messageStatus {
 
 const Chat = () => {
     const appStateContext = useContext(AppStateContext)
-    const selectedContext = useContext(SelectedContext)
     const chatMessageStreamEnd = useRef<HTMLDivElement | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [showLoadingMessage, setShowLoadingMessage] = useState<boolean>(false);
@@ -54,6 +52,7 @@ const Chat = () => {
     const [clearingChat, setClearingChat] = useState<boolean>(false);
     const [hideErrorDialog, { toggle: toggleErrorDialog }] = useBoolean(true);
     const [errorMsg, setErrorMsg] = useState<ErrorMessage | null>()
+    const filters = appStateContext?.state?.filters
 
     const errorDialogContentProps = {
         type: DialogType.close,
@@ -107,8 +106,7 @@ const Chat = () => {
             id: uuid(),
             role: "user",
             content: question,
-            date: new Date().toISOString(),
-            filters: selectedContext
+            date: new Date().toISOString()
         };
 
         let conversation: Conversation | null | undefined;
@@ -136,7 +134,8 @@ const Chat = () => {
         setMessages(conversation.messages)
         
         const request: ConversationRequest = {
-            messages: [...conversation.messages.filter((answer) => answer.role !== "error")]
+            messages: [...conversation.messages.filter((answer) => answer.role !== "error")],
+            filters: filters
             // messages: [...conversation.messages.filter((answer) => answer.role === "error")]
         };
 
@@ -187,8 +186,7 @@ const Chat = () => {
                     id: uuid(),
                     role: "error",
                     content: errorMessage,
-                    date: new Date().toISOString(),
-                    filters: selectedContext
+                    date: new Date().toISOString()
                 }
                 conversation.messages.push(errorChatMsg);
                 appStateContext?.dispatch({ type: 'UPDATE_CURRENT_CHAT', payload: conversation });
@@ -216,8 +214,7 @@ const Chat = () => {
             id: uuid(),
             role: "user",
             content: question,
-            date: new Date().toISOString(),
-            filters: selectedContext
+            date: new Date().toISOString()
         };
 
         //api call params set here (generate)
@@ -234,12 +231,14 @@ const Chat = () => {
             }else{
                 conversation.messages.push(userMessage);
                 request = {
-                    messages: [...conversation.messages.filter((answer) => answer.role !== "error")]
+                    messages: [...conversation.messages.filter((answer) => answer.role !== "error")],
+                    filters: filters
                 };
             }
         }else{
             request = {
-                messages: [userMessage].filter((answer) => answer.role !== "error")
+                messages: [userMessage].filter((answer) => answer.role !== "error"),
+                filters: filters
             };
             setMessages(request.messages)
         }
@@ -251,8 +250,7 @@ const Chat = () => {
                     id: uuid(),
                     role: "error",
                     content: "There was an error generating a response. Chat history can't be saved at this time. If the problem persists, please contact the site administrator.",
-                    date: new Date().toISOString(),
-                    filters: selectedContext
+                    date: new Date().toISOString()
                 }
                 let resultConversation;
                 if(conversationId){
@@ -350,8 +348,7 @@ const Chat = () => {
                     id: uuid(),
                     role: "error",
                     content: errorMessage,
-                    date: new Date().toISOString(),
-                    filters: selectedContext
+                    date: new Date().toISOString()
                 }
                 let resultConversation;
                 if(conversationId){
@@ -471,8 +468,7 @@ const Chat = () => {
                                 id: uuid(),
                                 role: "error",
                                 content: errorMessage,
-                                date: new Date().toISOString(),
-                                filters: selectedContext
+                                date: new Date().toISOString()
                             }
                             if(!appStateContext?.state.currentChat?.messages){
                                 let err: Error = {
@@ -604,14 +600,6 @@ const Chat = () => {
                             </div>
                         )}
 
-                        <div>
-                            <h3>Selected items</h3>
-                            <ul>  
-                                {selectedContext?.map((item, index) => (  
-                                <li key={index}>{item.label}</li>  
-                                ))}  
-                            </ul>
-                        </div>
                         <Stack horizontal className={styles.chatInput}>
                             {isLoading && (
                                 <Stack 

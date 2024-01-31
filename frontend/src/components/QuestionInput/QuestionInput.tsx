@@ -23,7 +23,7 @@ interface AppProps {
 } 
 
 const options = [
-    { label: "Congressional Budget Justifications", value: "congressional_budget_justifications" },
+    { label: "Congressional Budget Justifications", value: "congressional_budget_justification" },
     { label: "Questions for the Record", value: "qfr" },
     { label: "Supplemental Documents", value: "supplemental"}
 ];
@@ -43,6 +43,7 @@ export function Filter({ onSelectedChange }: AppProps) {
                 options={options}
                 onChange={handleChange}
                 labelledBy="Select"
+                overrideStrings={{"selectSomeItems": "Select Document Types to Search", "allItemsAreSelected": "All Document Types Selected"}}
             />
         </div>
     );

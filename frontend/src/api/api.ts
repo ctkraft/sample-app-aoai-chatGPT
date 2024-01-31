@@ -9,7 +9,8 @@ export async function conversationApi(options: ConversationRequest, abortSignal:
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            messages: options.messages
+            messages: options.messages,
+            filters: options.filters
         }),
         signal: abortSignal
     });
@@ -94,8 +95,7 @@ export const historyRead = async (convId: string): Promise<ChatMessage[]> => {
                     id: msg.id,
                     role: msg.role,
                     date: msg.createdAt,
-                    content: msg.content,
-                    filters: msg.filters
+                    content: msg.content
                 }
                 messages.push(message)
             });

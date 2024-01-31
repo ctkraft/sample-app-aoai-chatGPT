@@ -28,7 +28,6 @@ export type ChatMessage = {
     content: string;
     end_turn?: boolean;
     date: string;
-    filters: Option[] | undefined;
 };
 
 export type Conversation = {
@@ -63,6 +62,7 @@ export type ChatResponse = {
 
 export type ConversationRequest = {
     messages: ChatMessage[];
+    filters: Option[] | undefined;
 };
 
 export type UserInfo = {
