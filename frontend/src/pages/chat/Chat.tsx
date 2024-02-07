@@ -52,6 +52,7 @@ const Chat = () => {
     const [clearingChat, setClearingChat] = useState<boolean>(false);
     const [hideErrorDialog, { toggle: toggleErrorDialog }] = useBoolean(true);
     const [errorMsg, setErrorMsg] = useState<ErrorMessage | null>()
+    const filters = appStateContext?.state?.filters
 
     const errorDialogContentProps = {
         type: DialogType.close,
@@ -105,7 +106,7 @@ const Chat = () => {
             id: uuid(),
             role: "user",
             content: question,
-            date: new Date().toISOString(),
+            date: new Date().toISOString()
         };
 
         let conversation: Conversation | null | undefined;
@@ -133,7 +134,8 @@ const Chat = () => {
         setMessages(conversation.messages)
         
         const request: ConversationRequest = {
-            messages: [...conversation.messages.filter((answer) => answer.role !== "error")]
+            messages: [...conversation.messages.filter((answer) => answer.role !== "error")],
+            filters: filters
             // messages: [...conversation.messages.filter((answer) => answer.role === "error")]
         };
 
@@ -212,7 +214,7 @@ const Chat = () => {
             id: uuid(),
             role: "user",
             content: question,
-            date: new Date().toISOString(),
+            date: new Date().toISOString()
         };
 
         //api call params set here (generate)
@@ -229,12 +231,14 @@ const Chat = () => {
             }else{
                 conversation.messages.push(userMessage);
                 request = {
-                    messages: [...conversation.messages.filter((answer) => answer.role !== "error")]
+                    messages: [...conversation.messages.filter((answer) => answer.role !== "error")],
+                    filters: filters
                 };
             }
         }else{
             request = {
-                messages: [userMessage].filter((answer) => answer.role !== "error")
+                messages: [userMessage].filter((answer) => answer.role !== "error"),
+                filters: filters
             };
             setMessages(request.messages)
         }

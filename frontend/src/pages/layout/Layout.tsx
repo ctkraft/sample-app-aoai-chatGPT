@@ -2,9 +2,10 @@ import { Outlet, Link } from "react-router-dom";
 import styles from "./Layout.module.css";
 import Azure from "../../assets/FEMA.jpg";
 import { CopyRegular, ShareRegular } from "@fluentui/react-icons";
-import { CommandBarButton, Dialog, Stack, TextField, ICommandBarStyles, IButtonStyles, DefaultButton  } from "@fluentui/react";
+import { CommandBarButton, Dialog, Stack, StackItem, TextField, ICommandBarStyles, IButtonStyles, DefaultButton  } from "@fluentui/react";
 import { useContext, useEffect, useState } from "react";
 import { HistoryButton, ShareButton } from "../../components/common/Button";
+import { Option, Filter } from "../../components/QuestionInput/QuestionInput"
 import { AppStateContext } from "../../state/AppProvider";
 import { CosmosDBStatus } from "../../api";
 
@@ -58,6 +59,13 @@ const Layout = () => {
         appStateContext?.dispatch({ type: 'TOGGLE_CHAT_HISTORY' })
     };
 
+    const [selected, setSelected] = useState<Option[]>([])
+
+    const handleSelectedChange = (newSelected: Option[]) => {  
+        setSelected(newSelected)
+        appStateContext?.dispatch({ type: 'SET_FILTERS', payload: newSelected })
+    }; 
+
     useEffect(() => {
         if (copyClicked) {
             setCopyText("Copied URL");
@@ -69,9 +77,7 @@ const Layout = () => {
     return (
         <div className={styles.layout}>
             <header className={styles.header} role={"banner"}>
-                <Stack horizontal verticalAlign="center" horizontalAlign="space-between"
-                // className={styles.headerContainer}
-                >
+                <Stack horizontal verticalAlign="center" horizontalAlign="space-between" className={styles.headerContainer}>
                     <Stack horizontal verticalAlign="center">
                         <img
                             src={Azure}
@@ -82,7 +88,9 @@ const Layout = () => {
                             <h1 className={styles.headerTitle}>FEMA OCFO GPT</h1>
                         </Link>
                     </Stack>
-                    <Stack horizontal tokens={{ childrenGap: 4 }}>
+                    <Stack horizontal tokens={{ childrenGap: 4 }} verticalAlign="center" className={styles.rightHeaderSection}>
+                            References: &nbsp; 
+                            <Filter onSelectedChange={handleSelectedChange} />
                             <ShareButton onClick={handleShareClick} />
                     </Stack>
 

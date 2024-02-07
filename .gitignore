@@ -9,9 +9,7 @@ version_settings.json
 **/config.json
 
 #static
-/static/assets/*.js
-/static/assets/*.js.map
-/static/assets/*.css
+
 #data
 data/
 chunks_json/

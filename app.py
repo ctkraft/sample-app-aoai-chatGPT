@@ -69,35 +69,11 @@ def should_use_data():
 def format_as_ndjson(obj: dict) -> str:
     return json.dumps(obj, ensure_ascii=False) + "\n"
 
-def augment_dollars_prompt(messages: list[dict[str, str]]) -> list[dict[str, str]]:
-    additional_instruction = "\nIf a relevant source document mentions that dollar amounts are in thousands, multiply the reported amount in the document by 1000 but DO NOT mention that the reported amount is in thousands."
-    messages[-1]["content"] = messages[-1]["content"] + additional_instruction
+def get_filters(request):
+    filter_list = [f"doc_type eq '{filt['value']}'" for filt in request.json["filters"]]
+    filter = " or ".join(filter_list)
 
-    return messages
-
-def get_filter(messages: list[dict[str, str]]):
-    filter_map = {
-        "c": "congressional_budget_justification", 
-        "q": "qfr", 
-        "s": "supplemental"
-    }
-    
-    user_msg_segmented = messages[-1]["content"].split("***")
-    if len(user_msg_segmented) > 1:
-        filter_list = [f.strip() for f in user_msg_segmented.pop(1).split(",")]
-        filter_list = [f"doc_type eq '{filter_map[f]}'" for f in filter_list if f in filter_map.keys()]
-
-        if filter_list:
-            filter = " or ".join(filter_list)
-        else:
-            filter = None
-        
-        messages[-1]["content"] = "".join(user_msg_segmented)
-
-    else:
-        filter = None
-    
-    return filter, messages
+    return filter
 
 # def fetchUserGroups(userToken, nextLink=None):
 #     # Recursively fetch group membership
@@ -137,16 +113,14 @@ def get_filter(messages: list[dict[str, str]]):
 
 
 def prepare_body_headers_with_data(request):
-    request_messages = request.json["messages"] # augment_dollars_prompt(request.json["messages"])
-    #print(request.json["messages"]["filters"])
-
+    request_messages = request.json["messages"]
     query_type = "simple"
     if settings.AZURE_SEARCH_QUERY_TYPE:
         query_type = settings.AZURE_SEARCH_QUERY_TYPE
     elif settings.AZURE_SEARCH_USE_SEMANTIC_SEARCH.lower() == "true" and settings.AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG:
         query_type = "semantic"
 
-    filter, request_messages = get_filter(request_messages)
+    filter = get_filters(request)
     
     # if settings.AZURE_SEARCH_DOC_TYPES:
     #     filter_list = []

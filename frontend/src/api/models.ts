@@ -1,3 +1,5 @@
+import { Option } from "../components/QuestionInput"
+
 export type AskResponse = {
     answer: string;
     citations: Citation[];
@@ -60,6 +62,7 @@ export type ChatResponse = {
 
 export type ConversationRequest = {
     messages: ChatMessage[];
+    filters: Option[] | undefined;
 };
 
 export type UserInfo = {

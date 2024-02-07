@@ -1,5 +1,6 @@
 import { UserInfo, ConversationRequest, Conversation, ChatMessage, CosmosDBHealth, CosmosDBStatus } from "./models";
 import { chatHistorySampleData } from "../constants/chatHistory";
+import { Option } from "../components/QuestionInput"
 
 export async function conversationApi(options: ConversationRequest, abortSignal: AbortSignal): Promise<Response> {
     const response = await fetch("/conversation", {
@@ -8,7 +9,8 @@ export async function conversationApi(options: ConversationRequest, abortSignal:
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            messages: options.messages
+            messages: options.messages,
+            filters: options.filters
         }),
         signal: abortSignal
     });
@@ -93,7 +95,7 @@ export const historyRead = async (convId: string): Promise<ChatMessage[]> => {
                     id: msg.id,
                     role: msg.role,
                     date: msg.createdAt,
-                    content: msg.content,
+                    content: msg.content
                 }
                 messages.push(message)
             });
