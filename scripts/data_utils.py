@@ -194,14 +194,19 @@ def doc_intel_map_node_to_page(node, pages, full_text):
     
     node.metadata["pages"] = f"{page_start} - {page_end}" if page_start != page_end else str(page_start)
     relevant_pages = pages[page_start:page_end+1]
-    #relevant_pages = [page for page in relevant_pages if len(page["page_text"])>200]
     
+    relevant_sections = []
     section_header = "<b>Sections:</b>"
     for page in relevant_pages:
-        page_header = "\n".join(para.content for para in page["paragraphs"][:2])
-        section_header += f"\n{page_header}\n"
+        if page["page_text"] != "":
+            page_header = f"<p>{' - '.join([para.content for para in page['paragraphs'][:2]])}</p>"
+            relevant_sections.append(page_header)
+    section_header += "".join(list(set(relevant_sections)))
+
+    node_text_lines = [f"<p>{line}</p>" for line in node_text.split("\n")]
+    node_text = "".join(node_text_lines)
     
-    node.text = f"<p>{section_header}</p><p><b>Page(s)</b>: {node.metadata['pages']}</p><p><b>Content:</b></p><p>{node.text}</p>"
+    node.text = f"<p>{section_header}</p><p><b>Page(s)</b>: {node.metadata['pages']}</p><p><b>Content:</b></p><p>{node_text}</p>"
 
     return node
 
@@ -776,7 +781,8 @@ def doc_intel_extract_pdf(file_path, doc_intel_client):
         #     paragraphs_on_page = [para for para in paragraphs_on_page if para != ""]
 
         # Track offset for each page, so when we use re.search(chunk) across the full doc text, we can map the output idx to the right page using offset
-        page_text = "\n".join([para.content for para in paragraphs_on_page])
+        page_text_paragraphs = [para for para in paragraphs_on_page[2:] if para.role not in ["pageNumber", "pageHeader", "pageFooter"]]
+        page_text = "\n".join([para.content for para in page_text_paragraphs])
         page_map.append({"page_num": page_num, "offset": offset, "page_text": page_text, "paragraphs": paragraphs_on_page, "tables": html_tables_on_page})
         offset += len(page_text)
 
