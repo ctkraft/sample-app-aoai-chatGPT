@@ -193,7 +193,7 @@ def doc_intel_map_node_to_page(node, pages, full_text):
     page_end = page_end if end_found == True else len(pages)
     
     node.metadata["pages"] = f"{page_start} - {page_end}" if page_start != page_end else str(page_start)
-    relevant_pages = pages[page_start:page_end+1]
+    relevant_pages = pages[page_start-1:page_end]
     
     relevant_sections = []
     section_header = "<b>Sections:</b>"
