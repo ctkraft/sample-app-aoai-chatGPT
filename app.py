@@ -230,6 +230,9 @@ def conversation_with_data(request_body):
 
         return Response(format_as_ndjson(r), status=status_code)
     else:
+        response = stream_with_data(body, headers, endpoint, history_metadata)
+        for res in response:
+            print(res)
         return Response(stream_with_data(body, headers, endpoint, history_metadata), mimetype='text/event-stream')
 
 
