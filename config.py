@@ -35,8 +35,7 @@ class Settings(BaseSettings):
     AZURE_OPENAI_STOP_SEQUENCE: str = ""
     AZURE_OPENAI_SYSTEM_MESSAGE: str = ""
     AZURE_OPENAI_PREVIEW_API_VERSION: str = ""
-    AZURE_OPENAI_STREAM: str = ""
-    SHOULD_STREAM: bool = True
+    AZURE_OPENAI_STREAM: bool = False
     AZURE_OPENAI_ENDPOINT: str = ""
     AZURE_OPENAI_EMBEDDING_ENDPOINT: str = ""
     AZURE_OPENAI_EMBEDDING_KEY: str = ""
@@ -44,7 +43,6 @@ class Settings(BaseSettings):
     AZURE_COSMOSDB_DATABASE: str = ""
     AZURE_COSMOSDB_CONVERSATIONS_CONTAINER: str = ""
     AZURE_COSMOSDB_ACCOUNT_KEY: str = ""
-    VERSION_ID: str = ""
     DATA_PATH: str = ""
     AZURE_LOCATION: str = ""
     AZURE_SUBSCRIPTION_ID: str = ""
@@ -55,6 +53,7 @@ class Settings(BaseSettings):
     AZURE_SEARCH_SEMANTIC_CONFIG_NAME: str = "default"
     AZURE_SEARCH_ANALYZER_LANGUAGE: str = "en"
     SAVE_DATA_LOCAL: bool = ""
+    ENV_TYPE: str = ""
     PREP_CONFIG: dict = {}
 
     class Config:
