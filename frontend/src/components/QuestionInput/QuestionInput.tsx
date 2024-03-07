@@ -25,7 +25,8 @@ interface AppProps {
 const options = [
     { label: "Congressional Budget Justifications", value: "congressional_budget_justification" },
     { label: "Questions for the Record", value: "qfr" },
-    { label: "Supplemental Documents", value: "supplemental"}
+    { label: "Supplemental Documents", value: "supplemental"},
+    { label: "Congressional Testimonies", value: "congressional_testimony"}
 ];
 
 export function Filter({ onSelectedChange }: AppProps) {
