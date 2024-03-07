@@ -650,7 +650,7 @@ def chunk_content(
     for node, chunk_size, llama_doc in nodes:
         if chunk_size >= min_chunk_size:
             chunk = Document(
-                        id=uuid.uuid5(uuid.NAMESPACE_URL, node.text),
+                        id=str(uuid.uuid5(uuid.NAMESPACE_URL, node.text)),
                         doc_type=doc_type,
                         content=node.text,
                         title=node.metadata["title"],
