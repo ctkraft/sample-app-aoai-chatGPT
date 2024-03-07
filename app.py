@@ -16,7 +16,7 @@ from azure.search.documents.models import (
 )
 
 from scripts.data_utils import get_embedding
-from backend.assets.prompts import MAKE_QUERY_PROMPT, RAG_PROMPT
+from backend.assets.prompts import MAKE_QUERY_PROMPT, RETRY_MAKE_QUERY_PROMPT, RAG_PROMPT
 
 #from backend.auth.auth_utils import get_authenticated_user_details
 #from backend.history.cosmosdbservice import CosmosConversationClient
@@ -265,30 +265,32 @@ def stream_response(body, headers, endpoint, sources, intent, history_metadata={
     except Exception as e:
         yield format_as_ndjson({"error": str(e)})
 
-# tools = [
-#     {
-#         "type": "function",
-#         "function": {
-#             "name": "search_knowledgebase",
-#             "description": "Searches the knowledge base for an answer to the technical question. Don't do this if you haven't got the action plan yet.",
-#             "parameters": {
-#                 "type": "object",
-#                 "properties": {
-#                     "search_query": {
-#                         "type": "string",
-#                         "description": "The search query to use to search the knowledge base"
-#                     },
-#                     "key_words": {
-#                         "type": "string",
-#                         "description": "Key words to narrow down the search results"
-#                     },
-#                 },
-#                 "required": ["search_query", "key_words"],
-#             },
-#         }
-#     }
-# ]
+def static_response(body, headers, endpoint, sources, intent, history_metadata={}):
+    r = requests.post(endpoint, headers=headers, json=body)
+    status_code = r.status_code
+    full_response = r.json()
+    full_response["choices"] = [
+        {
+            "index": 0,
+            "messages": [
+                {
+                    "index": 0, 
+                    "role": "tool",
+                    "content": format_as_ndjson({"citations": sources, "intent": intent}),
+                    "end_turn": False
+                },
+                {
+                    "index": 1,
+                    "role": "assistant",
+                    "content": full_response["choices"][0]["message"]["content"],
+                    "end_turn": True
+                }
+            ]
+        }
+    ]
+    full_response['history_metadata'] = history_metadata
 
+    return full_response, status_code
 
 azcs_search_client = SearchClient(
     endpoint=f"https://{settings.AZURE_SEARCH_SERVICE}.search.windows.net", 
@@ -311,6 +313,8 @@ def search_knowledgebase(search_query, key_words, filter):
         search_text=key_words,
         vector_queries=[vector],
         filter=filter,
+        query_type="semantic",
+        semantic_configuration_name="default",
         top=10
     )
 
@@ -347,64 +351,75 @@ def prepare_body_headers(request_messages):
     return body, headers
 
 
+def compose_basic_query_params(query):
+    stop_words = [
+        "a", "an", "the",
+        "in", "on", "at", "of", "to", "with", "by", "for",
+        "and", "but", "or", "so", "if", "because",
+        "I", "you", "he", "she", "it", "we", "they",
+        "is", "am", "are", "was", "were", "be", "been",
+        "have", "has", "had", "do", "does", "did"
+    ]
+    keywords_basic = []
+    words = [word for word in query.split() if word.lower() not in stop_words]
+    for i in range(0, len(words) - 1, 2):
+        if i +1 < len(words):
+            keywords_basic.append(f"{words[i]} {words[i+1]}")
+        else:
+            keywords_basic.append(words[i])
+    
+    return {"search_query": query, "keywords": keywords_basic}
+
+
+def compose_query_params(request_messages):
+    query = request_messages[-1]["content"]
+    request_messages.append({"role": "user", "content": MAKE_QUERY_PROMPT.format(query=query)})
+    retries = 3
+
+    for i in range(retries):
+        try:
+            query_param_response = aoai_client.chat.completions.create(
+                model=settings.AZURE_OPENAI_MODEL,
+                messages=request_messages
+            )
+            query_params = ast.literal_eval(query_param_response.choices[0].message.content)
+            assert "search_query" in query_params.keys() and "keywords" in query_params.keys()
+            assert type(query_params["search_query"]) == str and type(query_params["keywords"]) == str
+            return request_messages, query_params
+        
+        except:
+            request_messages[-1]["content"] = request_messages[-1]["content"] + RETRY_MAKE_QUERY_PROMPT.format(attempt=i)
+    
+    # If GenAI formatting fails, use fallback option
+    return request_messages, compose_basic_query_params(query)
+
+
 def conversation_with_data(request_body):
     request_messages = [{"role": "system", "content": settings.AZURE_OPENAI_SYSTEM_MESSAGE}] + [{"role": msg["role"], "content": msg["content"]} for msg in request_body["messages"] if msg["role"] != "tool"]
-    filter = get_filters(request_body)
-    query = request_messages[-1]["content"]
     
-    print(MAKE_QUERY_PROMPT.format(query=query))
-    request_messages.append({"role": "user", "content": MAKE_QUERY_PROMPT.format(query=request_messages[-1])})
+    user_query = request_messages[-1]["content"]
+    request_messages, query_params = compose_query_params(request_messages)
+    filter = get_filters(request_body)
 
-    query_param_response = aoai_client.chat.completions.create(
-        model=settings.AZURE_OPENAI_MODEL,
-        messages=request_messages
-    )
-    query_params = ast.literal_eval(query_param_response.choices[0].message.content)
     sources_str, sources = search_knowledgebase(
         search_query=query_params["search_query"], 
         key_words=query_params["keywords"],
-        filter=filter,
-        query_type="semantic",
-        semantic_configuration_name="default"
+        filter=filter
     )
 
-    request_messages[-1] = {"role": "user", "content": RAG_PROMPT.format(references=sources_str, query=query)}
-
+    request_messages[-1] = {"role": "user", "content": RAG_PROMPT.format(references=sources_str, query=user_query)}
     body, headers = prepare_body_headers(request_messages)
     base_url = settings.AZURE_OPENAI_ENDPOINT if settings.AZURE_OPENAI_ENDPOINT else f"https://{settings.AZURE_OPENAI_RESOURCE}.openai.azure.com/"
-    endpoint = f"{base_url}openai/deployments/{settings.AZURE_OPENAI_MODEL}/chat/completions?api-version=2023-05-15"
+    endpoint = f"{base_url}openai/deployments/{settings.AZURE_OPENAI_MODEL}/chat/completions?api-version={settings.AZURE_OPENAI_PREVIEW_API_VERSION}"
+    intent = query_params["keywords"].split(", ")
 
     if not settings.AZURE_OPENAI_STREAM:
-        r = requests.post(endpoint, headers=headers, json=body)
-        status_code = r.status_code
-        full_response = r.json()
-        full_response["choices"] = [
-            {
-                "index": 0,
-                "messages": [
-                    {
-                        "index": 0, 
-                        "role": "tool",
-                        "content": format_as_ndjson({"citations": sources, "intent": query_params['keywords'].split(', ')}),
-                        "end_turn": False
-                    },
-                    {
-                        "index": 1,
-                        "role": "assistant",
-                        "content": full_response["choices"][0]["message"]["content"],
-                        "end_turn": True
-                    }
-                ]
-            }
-        ]
-        full_response['history_metadata'] = {}
+        full_response, status_code = static_response(body, headers, endpoint, sources, intent, {})
         return Response(format_as_ndjson(full_response), status=status_code)
     
     else:
-        return Response(stream_response(body, headers, endpoint, sources, 
-                                        intent=query_params["keywords"].split(", "), 
-                                        history_metadata={}),
-                        mimetype='text/event-stream')   
+        return Response(stream_response(body, headers, endpoint, sources, intent, {}),
+                        mimetype='text/event-stream')
 
 
 def conversation_with_data2(request_body):

@@ -32,8 +32,7 @@ class Settings(BaseSettings):
     AZURE_OPENAI_STOP_SEQUENCE: str = ""
     AZURE_OPENAI_SYSTEM_MESSAGE: str = ""
     AZURE_OPENAI_PREVIEW_API_VERSION: str = ""
-    AZURE_OPENAI_STREAM: str = ""
-    SHOULD_STREAM: bool = True
+    AZURE_OPENAI_STREAM: bool = False
     AZURE_OPENAI_ENDPOINT: str = ""
     AZURE_OPENAI_EMBEDDING_ENDPOINT: str = ""
     AZURE_OPENAI_EMBEDDING_KEY: str = ""
@@ -63,7 +62,6 @@ class Settings(BaseSettings):
         self.AZURE_OPENAI_TEMPERATURE = version_env["AZURE_OPENAI_TEMPERATURE"]
         self.AZURE_OPENAI_TOP_P = version_env["AZURE_OPENAI_TOP_P"]
         self.AZURE_OPENAI_SYSTEM_MESSAGE = version_env["AZURE_OPENAI_SYSTEM_MESSAGE"]
-        self.SHOULD_STREAM = True if version_env["AZURE_OPENAI_STREAM"].lower() == "true" else False
         self.PREP_CONFIG = version_settings.get("PREP_CONFIG", None)
 
 settings = Settings()

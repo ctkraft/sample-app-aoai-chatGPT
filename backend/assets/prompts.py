@@ -6,6 +6,13 @@ Format your response as a JSON object following this template: {{"search_query":
 Your search query:
 """
 
+RETRY_MAKE_QUERY_PROMPT = """
+ATTEMPT {attempt}:
+Your last attempt to produce a formatted search query failed. Make sure you format the supplied QUERY according to the following template: {{"search_query": "natural language search query for semantic search engine", "keywords": "keyword1, keyword2, etc."}}
+
+Your search query:
+"""
+
 RAG_PROMPT = """
 REFERENCES are provided below as a knowledge source. 
 
