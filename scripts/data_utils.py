@@ -233,7 +233,14 @@ def process_nodes(nodes, pages, content, doc_type, cracked_pdf, llama_doc):
     if cracked_pdf == True:
         print("Cracked PDF True, using doc intel map node to page")
         for i in tqdm(range(len(nodes))):
-            nodes[i] = doc_intel_map_node_to_page(nodes[i], pages, content)
+            try:
+                nodes[i] = doc_intel_map_node_to_page(nodes[i], pages, content)
+            except:
+                print(f"Node {i} failed to locate page info")
+                nodes[i].metadata["pages"] = "Unknown"
+                node_text_lines = [f"<p>{line}</p>" for line in nodes[i].text.split("\n")]
+                node_text = "".join(node_text_lines)
+                nodes[i].text = f"<p><b>Sections:</b> Unknown</p><p><b>Page(s)</b>: {nodes[i].metadata['pages']}</p><p><b>Content:</b></p><p>{node_text}</p>"
         table_nodes = doc_intel_tables_to_nodes(pages, llama_doc) 
         nodes += table_nodes
     
