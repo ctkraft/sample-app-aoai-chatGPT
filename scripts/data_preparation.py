@@ -268,15 +268,13 @@ def upload_documents_to_index(service_name, subscription_id, resource_group, ind
     
     to_upload_dicts = []
 
-    id = 0
     for document in docs:
         d = dataclasses.asdict(document)
         # add id to documents
-        d.update({"@search.action": "upload", "id": str(id)})
+        d.update({"@search.action": "upload", "id": str(document.id)})
         if "contentVector" in d and d["contentVector"] is None:
             del d["contentVector"]
         to_upload_dicts.append(d)
-        id += 1
     
     endpoint = "https://{}.search.windows.net/".format(service_name)
     admin_key = json.loads(
