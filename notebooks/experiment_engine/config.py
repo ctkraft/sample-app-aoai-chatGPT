@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     AZURE_SEARCH_SERVICE: str = ""
     AZURE_SEARCH_INDEX: str = ""
     AZURE_SEARCH_KEY: str = ""
-    AZURE_SEARCH_USE_SEMANTIC_SEARCH: str = ""
+    AZURE_SEARCH_USE_SEMANTIC_SEARCH: bool = False
     AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG: str = ""
     AZURE_SEARCH_INDEX_IS_PRECHUNKED: str = ""
     AZURE_SEARCH_TOP_K: int = 5
@@ -25,7 +25,6 @@ class Settings(BaseSettings):
     AZURE_OPENAI_RESOURCE: str = ""
     AZURE_OPENAI_MODEL: str = ""
     AZURE_OPENAI_KEY: str = ""
-    AZURE_OPENAI_MODEL_NAME: str = ""
     AZURE_OPENAI_TEMPERATURE: float = 0.8
     AZURE_OPENAI_TOP_P: float = 1.0
     AZURE_OPENAI_MAX_TOKENS: int = 8000
