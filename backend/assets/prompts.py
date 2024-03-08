@@ -28,7 +28,7 @@ QUERY:
 {query}
 ================================
 
-Keep your response objective and factual and use an informational report-style tone. Do not include content outside of the supplied REFERENCES. Cite ANY and ALL sentences that come from text in the REFERENCES using "[docN]" notation. For example, if a given sentence uses the first document in CITATIONS, add "[doc1]" to the end of that sentence. Likewise, use "[doc2]" if citing the second document in CITATIONS. DO NOT use any citation convention other than "[docN]".
+Keep your response objective and factual. Use an informational report-style tone. Do NOT include content outside of the supplied REFERENCES. Do NOT provide information about Fiscal Years (FY) that are not explicitly mentioned in the documents. Cite ANY and ALL sentences that come from text in the REFERENCES using "[docN]" notation. For example, if a given sentence uses the first document in CITATIONS, add "[doc1]" to the end of that sentence. Likewise, use "[doc2]" if citing the second document in CITATIONS. DO NOT use any citation convention other than "[docN]".
 
 Your response:
 """
